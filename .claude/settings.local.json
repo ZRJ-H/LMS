@@ -80,7 +80,8 @@
       "Bash(git init *)",
       "PowerShell(node .claude/assistant-tools.js '{\"action\":\"save_todo\",\"data\":{\"filePath\":\"LMS/backup/\",\"goal\":\"重置 LMS/backup 为 C_LMS 精确副本，砍掉 mainWin.cpp/h 等偏离内容，恢复扁平目录结构\"}}')",
       "PowerShell(node .claude/assistant-tools.js \"{`\"action`\":`\"save_todo`\",`\"data`\":{`\"filePath`\":`\"LMS/backup/`\",`\"goal`\":`\"重置 LMS backup 为 C_LMS 精确副本，砍掉 mainWin.cpp/h 等偏离内容，恢复扁平目录结构`\"}}\")",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
