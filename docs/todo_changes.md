@@ -19,3 +19,9 @@
 
 - [ ] **文件路径**：C_LMS/control.cpp
   **修改目标**：[Day2未完成] control_show() 的 EDIT_PWD 分支嵌入 common.h 的密码输入机制（Tab切换明文/密文），当前只做了静态*遮罩
+
+- [ ] **文件路径**：LMS/backup/
+  **修改目标**：重置 LMS backup 为 C_LMS 精确副本，砍掉 mainWin.cpp/h 偏离内容
+
+- [ ] **文件路径**：workspace memory / CLAUDE.md
+  **修改目标**：更新工作流：放弃自由vibe coding，严格以C_LMS为基准小步迭代，每模块完成后对比确认方向

@@ -81,7 +81,11 @@
       "PowerShell(node .claude/assistant-tools.js '{\"action\":\"save_todo\",\"data\":{\"filePath\":\"LMS/backup/\",\"goal\":\"重置 LMS/backup 为 C_LMS 精确副本，砍掉 mainWin.cpp/h 等偏离内容，恢复扁平目录结构\"}}')",
       "PowerShell(node .claude/assistant-tools.js \"{`\"action`\":`\"save_todo`\",`\"data`\":{`\"filePath`\":`\"LMS/backup/`\",`\"goal`\":`\"重置 LMS backup 为 C_LMS 精确副本，砍掉 mainWin.cpp/h 等偏离内容，恢复扁平目录结构`\"}}\")",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(mkdir -p __TRACKED_VAR__/.claude/skills)",
+      "Bash(cp D:/MyProject/LMS/.claude/skills/git-project.md __TRACKED_VAR__/.claude/skills/git-project.md)",
+      "PowerShell($json = '{\"\"action\"\":\"\"save_todo\"\",\"\"data\"\":{\"\"filePath\"\":\"\"LMS/backup/\"\",\"\"goal\"\":\"\"重置 LMS backup 为 C_LMS 精确副本，砍掉 mainWin.cpp/h 偏离内容\"\"}}'; node .claude/assistant-tools.js $json)",
+      "PowerShell($json = '{\"\"action\"\":\"\"save_todo\"\",\"\"data\"\":{\"\"filePath\"\":\"\"workspace memory / CLAUDE.md\"\",\"\"goal\"\":\"\"更新工作流：放弃自由vibe coding，严格以C_LMS为基准小步迭代，每模块完成后对比确认方向\"\"}}'; node .claude/assistant-tools.js $json)"
     ]
   }
 }
