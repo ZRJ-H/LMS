@@ -1,0 +1,37 @@
+#include <graphics.h>
+#include <conio.h>
+#include <stdio.h>
+#include "control.h"
+
+//控件显示函数
+void control_show(CONTROL_T ctrl){
+	int center=0;
+	char str[20]={0};
+	int i=0; 
+	if(ctrl.state==1){
+		setfillcolor(ctrl.bgColor1);
+	}
+	else{
+		setfillcolor(ctrl.bgColor2);
+	}
+	settextcolor(ctrl.textColor);
+	settextstyle(16,10,_T("黑体"));//一个中文两个字节，每个字节长度为10 
+	if(ctrl.type ==BUTTON||ctrl.type ==EDIT||ctrl.type==EDIT_PWD){
+		fillrectangle(ctrl.x,ctrl.y,ctrl.x+ctrl.width,ctrl.y+ctrl.height );
+	}
+	if(ctrl.type==EDIT_PWD){
+		//此处要嵌入密码输入机制 
+		for(i=0;i<strlen(ctrl.text );i++){
+			str[i]='*';
+		}
+		outtextxy(ctrl.x+5,ctrl.y+15,str);
+	}
+	else if(ctrl.type ==EDIT||ctrl.type ==LABEL){
+		outtextxy(ctrl.x+5,ctrl.y+15,ctrl.text );
+	}
+	else if(ctrl.type==BUTTON){
+		center=ctrl.x+(ctrl.width-strlen(ctrl.text)*10/2);
+		outtextxy(center,ctrl.y+15,ctrl.text);//做居中处理 
+	}
+	
+} 
