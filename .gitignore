@@ -5,8 +5,16 @@
 *.out
 backup/output/
 
-# IDE 配置
+# IDE / 工具配置（不提交）
 .vscode/
+.claude/
+
+# 文档与日志（不提交）
+docs/
+dailyRpt.md
+handoff.md
+plan.md
+CLAUDE.md
 
 # Python 缓存
 __pycache__/
@@ -23,9 +31,19 @@ Desktop.ini
 *.xlsx
 *.doc
 *.docx
+*.png
+*.bmp
+*.jpg
+!backup/image/
 
-# 本地数据备份
-backup/data/*.bat
+# 运行时数据（不提交）
+backup/data/
+
+# 测试文件（不提交）
+backup/test_*.cpp
+
+# 根目录资源（已迁移到 backup/image/）
+image/
 
 # 项目交付区（只读源）
 C_LMS/
