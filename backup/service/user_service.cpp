@@ -110,7 +110,11 @@ int user_svc_create(const char *name, const char *pwd, UserRole role, char *err_
 		return -3;
 	}
 
-	user_svc_save();
+	if (user_svc_save() < 0) {
+		strncpy(err_msg, "数据保存失败，请检查磁盘空间", err_len - 1);
+		err_msg[err_len - 1] = '\0';
+		return -4;
+	}
 	return 0;
 }
 

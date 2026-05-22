@@ -20,23 +20,24 @@ typedef struct control_t{
 	int width;
 	int height;
 	char text[100];
-	COLORREF bgColor1;
-	COLORREF bgColor2;
-	COLORREF textColor;
+	COLORREF bgColor1;  /* 选中态背景色 */
+	COLORREF bgColor2;  /* 未选中态背景色 */
+	COLORREF textColor; /* 选中态文字色 */
 	int type;
 	int state;
-	int visible;   /* EDIT_PWD 是否明文显示，0=掩码 */
-	int sel_index; /* COMBO 当前选中选项索引（0-based） */
+	int visible;        /* EDIT_PWD 是否明文显示，0=掩码 */
+	int sel_index;      /* COMBO 当前选中选项索引（0-based） */
+	COLORREF textColor2;/* 未选中态文字色（0=用 textColor） */
 }CONTROL_T;
 
 typedef struct window_t{
-	int x;
-	int y;
-	int width;
-	int height;
+	int x;					//窗口左上角X坐标
+	int y;				//窗口左上角Y坐标		
+	int width;		//窗口宽度
+	int height;	//窗口高度
 	COLORREF bgColor;//窗口填充颜色
 	int count;//控件数
-	CONTROL_T controls[15];
+	CONTROL_T controls[15];//窗口内控件数组，最多15个
 	int current;//当前停留在哪个控件
 }WINDOW_T;
 

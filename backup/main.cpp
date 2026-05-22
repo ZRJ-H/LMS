@@ -10,6 +10,7 @@
 #include "service/order_service.h"
 
 int main(int argc, char** argv) {
+	CreateDirectoryA("data", NULL);  /* 确保 data/ 目录存在 */
 	initgraph(800, 600, 1);
 	setbkmode(TRANSPARENT);
 	SetForegroundWindow(GetHWnd());	/* 强制图形窗口获得焦点，不然键盘输入无效 */

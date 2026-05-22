@@ -7,9 +7,10 @@
 #   bash build.sh list      显示参与编译的文件
 
 set -e
-cd "$(dirname "$0")"
+SCRIPT="$(realpath "$0")"
+cd "$(dirname "$SCRIPT")"
 
-CXX="/c/msys64/mingw64/bin/g++.exe"
+CXX="/c/enviroment/mingw64/bin/g++.exe"
 EASYX_INC="/c/PROGRA~2/Dev-Cpp/MinGW64/include"
 EASYX_LIB="/c/PROGRA~2/Dev-Cpp/MinGW64/lib"
 TARGET="output/LMS.exe"
@@ -17,7 +18,7 @@ TARGET="output/LMS.exe"
 # 收集源文件（每个子目录一行，新增目录在这里加）
 SRCS=""
 for dir in . public service view app; do
-    for f in "$dir"/*.cpp; do
+    for f in "$dir"/*.cpp "$dir"/*.c; do
         [ -f "$f" ] || continue
         [[ "$(basename "$f")" == test_* ]] && continue
         SRCS="$SRCS $f"
@@ -26,7 +27,7 @@ done
 
 CXXFLAGS="-finput-charset=UTF-8 -fexec-charset=GBK -O2 -Wall"
 INCS="-I. -Ipublic -Iservice -Iview -Iapp -I$EASYX_INC"
-LIBS="-L$EASYX_LIB -leasyx -static-libgcc -static-libstdc++"
+LIBS="-L$EASYX_LIB -leasyx -lmsvcrt -static-libgcc -static-libstdc++"
 
 case "${1:-build}" in
 clean)
@@ -40,7 +41,7 @@ list)
     echo "=== 目标: $TARGET ==="
     ;;
 run)
-    "$0" build
+    bash "$SCRIPT" build
     ./"$TARGET"
     ;;
 build|*)

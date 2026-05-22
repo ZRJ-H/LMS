@@ -10,13 +10,13 @@
 
 int loginWin(){
 	WINDOW_T loginWin = {
-	    240, 240, 290, 180, WHITE, 6, {
-	        {245, 250, 80, 50, "用户名：", WHITE, WHITE, CYAN, LABEL, 0},
-	        {245, 305, 80, 50, "密  码：", WHITE, WHITE, CYAN, LABEL, 0},
-	        {320, 250, 80, 50, "", CYAN, LIGHTCYAN, WHITE, EDIT, 1},
-	        {320, 305, 80, 50, "", CYAN, LIGHTCYAN, WHITE, EDIT_PWD, 0},
-	        {245, 360, 130, 50, "登录", CYAN, LIGHTCYAN, WHITE, BUTTON, 0},
-	        {390, 360, 130, 50, "返回", CYAN, LIGHTCYAN, WHITE, BUTTON, 0},
+	    200, 240, 400, 200, WHITE, 6, {
+	        {210, 255, 80, 50, "用户名：", WHITE, WHITE, BLACK, LABEL, 0, 0, 0, BLACK},
+	        {210, 315, 80, 50, "密  码：", WHITE, WHITE, BLACK, LABEL, 0, 0, 0, BLACK},
+	        {300, 255, 280, 50, "", CYAN, LIGHTCYAN, WHITE, EDIT, 1, 0, 0, BLACK},
+	        {300, 315, 280, 50, "", CYAN, LIGHTCYAN, WHITE, EDIT_PWD, 0, 0, 0, BLACK},
+	        {250, 385, 140, 50, "登录", CYAN, LIGHTCYAN, WHITE, BUTTON, 0, 0, 0, BLACK},
+	        {410, 385, 140, 50, "返回", CYAN, LIGHTCYAN, WHITE, BUTTON, 0, 0, 0, BLACK},
 	    }
 	};
 
@@ -32,6 +32,7 @@ int loginWin(){
 			User *u = user_svc_auth(username, password, err_msg, sizeof(err_msg));
 			if (u) {
 				current_user = u;
+				get_current_time_str(login_time_str);
 				return 2;                  /* 跳转到主菜单 */
 			}
 

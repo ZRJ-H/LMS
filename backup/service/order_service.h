@@ -16,6 +16,9 @@ Order *order_svc_find_by_id(const char *order_id);
 /* 按状态筛选（返回新链表头，调用者负责释放） */
 Order *order_svc_list_by_status(OrderStatus status);
 
+/* 按用户ID筛选（返回新链表头，调用者负责释放） */
+Order *order_svc_list_by_user(int user_id);
+
 /* 获取订单链表头 */
 Order *order_svc_list_all();
 

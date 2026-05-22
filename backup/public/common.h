@@ -1,4 +1,4 @@
-#ifndef COMMON_H
+﻿#ifndef COMMON_H
 #define COMMON_H
 #include <stdio.h>
 #include <stdlib.h>
@@ -155,6 +155,7 @@ typedef struct User {
 typedef struct Order {
     struct Order *next;
     char        order_id[ORDER_ID_LEN];   /* WL + 日期 + 6位序号 */
+    int         user_id;                  /* 下单用户ID，关联 User.id */
     char        customer_name[NAME_LEN];
     char        customer_phone[PHONE_LEN];
     char        from_addr[ADDR_LEN];
@@ -342,6 +343,9 @@ extern int order_sequence;          /* 订单号当日序号 */
 
 /* 当前登录用户 */
 extern User *current_user;
+
+/* 登录时间字符串（登录成功时写入） */
+extern char login_time_str[20];
 
 /* ============================================================
  *            公共函数声明

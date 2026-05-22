@@ -44,7 +44,7 @@ static void showOrderList(const Order *head) {
 	const char *headers[] = {"订单号", "客户", "状态", "货物类型"};
 	const int col_widths[] = {180, 100, 90, 100};
 	window_show_table("订单列表", headers, col_widths, 4,
-	                  head, offsetof(Order, next), drawOrderRow, 8);
+	                  head, offsetof(Order, next), drawOrderRow, 5);
 }
 
 /* ============================================================
@@ -102,6 +102,7 @@ void createOrderWin() {
 			strcpy(o->goods_type, goods_type_to_string(gtype));
 			if (strlen(time) > 0) strncpy(o->expected_delivery_time, time, 19);
 			o->status = ORDER_PENDING_REVIEW;
+			o->user_id = current_user->id;
 
 			/* 插入全局链表头部 + 落盘 */
 			o->next = order_list_head;
@@ -123,7 +124,7 @@ void createOrderWin() {
 /* ========== 订单查询窗口 ========== */
 void searchOrderWin() {
 	WINDOW_T win = {
-	    180, 60, 460, 450, WHITE, 10, {
+	    180, 60, 460, 450, WHITE, 11, {
 	        {190, 70, 440, 30, "订单查询", WHITE, WHITE, BLACK, LABEL, 0, 0, 0},
 	        {190, 115, 80, 35, "订单号：", WHITE, WHITE, BLACK, LABEL, 0, 0, 0},
 	        {270, 115, 200, 35, "", CYAN, LIGHTCYAN, WHITE, EDIT, 1, 0, 0},
@@ -133,7 +134,8 @@ void searchOrderWin() {
 	        {270, 205, 200, 35, "全部|待审核|已驳回|待出库|运输中|已送达|已完成", CYAN, LIGHTCYAN, WHITE, COMBO, 0, 0, 0},
 	        {190, 280, 160, 50, "查询", CYAN, LIGHTCYAN, WHITE, BUTTON, 0, 0, 0},
 	        {380, 280, 160, 50, "全部订单", CYAN, LIGHTCYAN, WHITE, BUTTON, 0, 0, 0},
-	        {190, 360, 160, 50, "返回", CYAN, LIGHTCYAN, WHITE, BUTTON, 0, 0, 0},
+	        {190, 360, 160, 50, "我的订单", CYAN, LIGHTCYAN, WHITE, BUTTON, 0, 0, 0},
+	        {380, 360, 160, 50, "返回", CYAN, LIGHTCYAN, WHITE, BUTTON, 0, 0, 0},
 	    }
 	};
 
@@ -187,6 +189,20 @@ void searchOrderWin() {
 			showOrderList(order_list_head);
 		}
 		else if (win.current == 9) {
+			/* "我的订单"按钮 — 按当前用户ID筛选 */
+			Order *my = order_svc_list_by_user(current_user->id);
+			if (!my) {
+				MessageBoxA(NULL, "你还没有创建过订单", "提示", MB_OK | MB_ICONINFORMATION);
+			} else {
+				showOrderList(my);
+				while (my) {
+					Order *tmp = my;
+					my = my->next;
+					free(tmp);
+				}
+			}
+		}
+		else if (win.current == 10) {
 			return;  /* 返回上级菜单 */
 		}
 	}

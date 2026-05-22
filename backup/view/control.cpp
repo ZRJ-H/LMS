@@ -13,47 +13,49 @@ void control_show(CONTROL_T ctrl){
 	int center=0;
 	char str[20]={0};
 	int i=0;
-	if(ctrl.state==1){
-		setfillcolor(ctrl.bgColor1);//高亮背景色
+	COLORREF fill = (ctrl.state == 1) ? ctrl.bgColor1 : ctrl.bgColor2;
+	COLORREF txt  = (ctrl.state == 1) ? ctrl.textColor :
+	                (ctrl.textColor2 ? ctrl.textColor2 : ctrl.textColor);
+
+	setfillcolor(fill);
+	settextcolor(txt);
+	settextstyle(16, 10, _T("黑体"));
+
+	/* 有边框的控件类型：先画黑边框，再内缩填充 */
+	if (ctrl.type == BUTTON || ctrl.type == EDIT ||
+	    ctrl.type == EDIT_PWD || ctrl.type == COMBO) {
+		setlinecolor(BLACK);
+		rectangle(ctrl.x, ctrl.y, ctrl.x + ctrl.width, ctrl.y + ctrl.height);
+		fillrectangle(ctrl.x + 1, ctrl.y + 1,
+		              ctrl.x + ctrl.width - 1, ctrl.y + ctrl.height - 1);
 	}
-	else{
-		setfillcolor(ctrl.bgColor2);//正常背景色
-	}
-	settextcolor(ctrl.textColor);//文本颜色
-	settextstyle(16,10,_T("宋体"));//字体
-	if(ctrl.type ==BUTTON||ctrl.type ==EDIT||ctrl.type==EDIT_PWD||ctrl.type==COMBO){
-		fillrectangle(ctrl.x,ctrl.y,ctrl.x+ctrl.width,ctrl.y+ctrl.height );
-	}
-	if(ctrl.type==COMBO){//下拉框显示当前选项
-		/* 从竖线分隔的选项中提取当前选中项 */
-		char display[100]={0};
-		char tmp[100]={0};
-		strcpy(tmp,ctrl.text);
-		int seg=0;
-		char *token=strtok(tmp,"|");
-		while(token){
-			if(seg==ctrl.sel_index){strcpy(display,token);break;}
-			token=strtok(NULL,"|");
+	if (ctrl.type == COMBO) {
+		char display[100] = {0}, tmp[100] = {0};
+		strcpy(tmp, ctrl.text);
+		int seg = 0;
+		char *token = strtok(tmp, "|");
+		while (token) {
+			if (seg == ctrl.sel_index) { strcpy(display, token); break; }
+			token = strtok(NULL, "|");
 			seg++;
 		}
-		outtextxy(ctrl.x+5,ctrl.y+15,display);
-		/* 下拉三角 */
-		outtextxy(ctrl.x+ctrl.width-20,ctrl.y+13,"▼");
+		outtextxy(ctrl.x + 5, ctrl.y + 15, display);
+		outtextxy(ctrl.x + ctrl.width - 20, ctrl.y + 13, "▼");
 	}
-	else if(ctrl.type==EDIT_PWD){
-		if(ctrl.visible){
-			outtextxy(ctrl.x+5,ctrl.y+15,ctrl.text);
-		}else{
-			for(i=0;i<(int)strlen(ctrl.text);i++) str[i]='*';
-			outtextxy(ctrl.x+5,ctrl.y+15,str);
+	else if (ctrl.type == EDIT_PWD) {
+		if (ctrl.visible) {
+			outtextxy(ctrl.x + 5, ctrl.y + 15, ctrl.text);
+		} else {
+			for (i = 0; i < (int)strlen(ctrl.text); i++) str[i] = '*';
+			outtextxy(ctrl.x + 5, ctrl.y + 15, str);
 		}
 	}
-	else if(ctrl.type ==EDIT||ctrl.type ==LABEL){
-		outtextxy(ctrl.x+5,ctrl.y+15,ctrl.text );
+	else if (ctrl.type == EDIT || ctrl.type == LABEL) {
+		outtextxy(ctrl.x + 5, ctrl.y + 15, ctrl.text);
 	}
-	else if(ctrl.type==BUTTON){
-		center=ctrl.x+(ctrl.width-strlen(ctrl.text)*10)/2;
-		outtextxy(center,ctrl.y+15,ctrl.text);
+	else if (ctrl.type == BUTTON) {
+		center = ctrl.x + (ctrl.width - (int)strlen(ctrl.text) * 10) / 2;
+		outtextxy(center, ctrl.y + 15, ctrl.text);
 	}
 }
 
@@ -114,7 +116,7 @@ WINDOW_T window_run(WINDOW_T win){
 						/* 绘制下拉列表 */
 						setfillcolor(WHITE);
 						fillrectangle(drop_x,drop_y,drop_x+drop_w,drop_y+drop_h);
-						settextstyle(14,8,_T("宋体"));
+						settextstyle(14,8,_T("黑体"));
 						for(int k=0;k<opt_cnt;k++){
 							if(k==sel){
 								setfillcolor(CYAN);
@@ -219,7 +221,7 @@ int window_show_table(const char *title,
 	while (p) { total++; p = *(const char **)(p + next_offset); }
 
 	if (total == 0) {
-		settextstyle(18, 12, _T("宋体"));
+		settextstyle(18, 12, _T("黑体"));
 		outtextxy(100, 280, "暂无数据，按任意键返回...");
 		getmessage(EX_KEY);
 		return 0;
@@ -250,7 +252,7 @@ int window_show_table(const char *title,
 		cleardevice();
 
 		/* 标题 */
-		settextstyle(20, 12, _T("宋体"));
+		settextstyle(20, 12, _T("黑体"));
 		char title_buf[256];
 		sprintf(title_buf, "%s  第 %d/%d 页  共 %d 条", title, cur_page + 1, pages, total);
 		outtextxy(table_x, 20, title_buf);
@@ -262,7 +264,7 @@ int window_show_table(const char *title,
 			fillrectangle(x, table_y, x + col_widths[c], table_y + header_h);
 			rectangle(x, table_y, x + col_widths[c], table_y + header_h);
 			settextcolor(WHITE);
-			settextstyle(14, 8, _T("宋体"));
+			settextstyle(14, 8, _T("黑体"));
 			outtextxy(x + 5, table_y + 8, (char *)headers[c]);
 			x += col_widths[c];
 		}
@@ -284,7 +286,7 @@ int window_show_table(const char *title,
 		}
 
 		/* 底部提示 */
-		settextstyle(14, 8, _T("宋体"));
+		settextstyle(14, 8, _T("黑体"));
 		settextcolor(BLACK);
 		int bottom_y = table_y + header_h + page_size * row_h + 20;
 		outtextxy(table_x, bottom_y, "↑↓:选择行  ←→:翻页  Enter:确认  Esc:返回");

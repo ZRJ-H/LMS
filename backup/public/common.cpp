@@ -36,6 +36,9 @@ int order_sequence            = 0;
 /* 当前登录用户 */
 User *current_user = NULL;
 
+/* 登录时间 */
+char login_time_str[20] = "";
+
 /* ============================================================
  *           时间工具函数
  * ============================================================ */
@@ -324,6 +327,22 @@ void init_sample_users() {
     u1->role = ROLE_CUSTOMER;
     u1->failed_attempts = 0;  u1->lockout_until = 0;
     u1->next = user_list_head;  user_list_head = u1;
+
+    User *u2 = (User *)malloc(sizeof(User));
+    u2->id = ++user_id_counter;
+    strcpy(u2->name, "user2");
+    md5_hash("123456", hash);  strcpy(u2->password, hash);
+    u2->role = ROLE_CUSTOMER;
+    u2->failed_attempts = 0;  u2->lockout_until = 0;
+    u2->next = user_list_head;  user_list_head = u2;
+
+    User *u3 = (User *)malloc(sizeof(User));
+    u3->id = ++user_id_counter;
+    strcpy(u3->name, "user3");
+    md5_hash("123456", hash);  strcpy(u3->password, hash);
+    u3->role = ROLE_CUSTOMER;
+    u3->failed_attempts = 0;  u3->lockout_until = 0;
+    u3->next = user_list_head;  user_list_head = u3;
 }
 
 User *find_user_by_name(const char *name) {
@@ -436,7 +455,7 @@ int bin_save_list(const char *filename,
                   const void *head,
                   size_t record_size,
                   size_t next_offset) {
-    FILE *fp=fopen(filename,"wb");//二进制写入 
+    FILE *fp=fopen(filename,"wb");//二进制写入
     if(!fp) return -1;
     
     /*第一遍：计数*/

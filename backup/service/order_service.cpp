@@ -4,6 +4,25 @@
 #include <string.h>
 #include <stddef.h>
 
+/* 创建一条种子订单的辅助函数 */
+static void seed_order(const char *cust_name, OrderStatus status,
+                       const char *from, const char *to, const char *goods) {
+	User *u = find_user_by_name(cust_name);
+	Order *o = (Order *)malloc(sizeof(Order));
+	memset(o, 0, sizeof(Order));
+	generate_order_id(o->order_id);
+	o->user_id = u ? u->id : 0;
+	strncpy(o->customer_name, cust_name, NAME_LEN - 1);
+	strncpy(o->customer_phone, "13800000000", PHONE_LEN - 1);
+	strncpy(o->from_addr, from, ADDR_LEN - 1);
+	strncpy(o->to_addr, to, ADDR_LEN - 1);
+	strcpy(o->goods_type, goods);
+	strcpy(o->expected_delivery_time, "2026-05-25 18:00");
+	o->status = status;
+	o->next = order_list_head;
+	order_list_head = o;
+}
+
 int order_svc_init() {
 	int count = bin_load_list(ORDER_DAT_FILE, (void **)&order_list_head, sizeof(Order), offsetof(Order, next));
 	if (count > 0) {
@@ -23,7 +42,17 @@ int order_svc_init() {
 		if (max_seq > order_sequence) order_sequence = max_seq;
 		return count;
 	}
-	return 0;
+
+	/* 无订单文件 → 创建种子订单（7条，覆盖多用户多状态） */
+	seed_order("user1", ORDER_PENDING_REVIEW, "北京市海淀区", "上海市浦东新区", "普通");
+	seed_order("user1", ORDER_PENDING_OUT,    "广州市天河区", "深圳市南山区", "易碎");
+	seed_order("user1", ORDER_IN_TRANSIT,     "成都市武侯区", "重庆市渝中区", "冷链");
+	seed_order("user2", ORDER_PENDING_REVIEW, "杭州市西湖区", "南京市鼓楼区", "普通");
+	seed_order("user2", ORDER_REJECTED,       "武汉市洪山区", "西安市雁塔区", "危险品");
+	seed_order("user1", ORDER_DELIVERED,      "长沙市岳麓区", "郑州市金水区", "普通");
+	seed_order("user3", ORDER_PENDING_REVIEW, "天津市和平区", "济南市历下区", "冷链");
+	order_svc_save();
+	return 7;
 }
 
 int order_svc_save() {
@@ -37,6 +66,23 @@ Order *order_svc_find_by_id(const char *order_id) {
 		p = p->next;
 	}
 	return NULL;
+}
+
+Order *order_svc_list_by_user(int user_id) {
+	Order *filtered = NULL, *tail = NULL;
+	Order *p = order_list_head;
+	while (p) {
+		if (p->user_id == user_id) {
+			Order *copy = (Order *)malloc(sizeof(Order));
+			memcpy(copy, p, sizeof(Order));
+			copy->next = NULL;
+			if (!filtered) filtered = copy;
+			else tail->next = copy;
+			tail = copy;
+		}
+		p = p->next;
+	}
+	return filtered;
 }
 
 Order *order_svc_list_by_status(OrderStatus status) {
