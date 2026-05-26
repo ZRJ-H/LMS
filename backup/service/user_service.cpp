@@ -50,7 +50,7 @@ User *user_svc_auth(const char *name, const char *pwd, char *err_msg, int err_le
 	}
 
 	if (validate_password(pwd) != 0) {
-		strncpy(err_msg, "密码长度须为6-10位，仅字母数字", err_len - 1);
+		strncpy(err_msg, "密码长度须为4-16位，仅字母数字", err_len - 1);
 		err_msg[err_len - 1] = '\0';
 		return NULL;
 	}

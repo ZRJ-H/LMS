@@ -115,7 +115,7 @@ int verify_password(const char *input, const char *stored) {
 /* 密码合法性校验：6-10位，仅字母数字 */
 int validate_password(const char *pwd) {
     int len = (int)strlen(pwd);
-    if (len < 6 || len > 10) return -1;
+    if (len < 4 || len > 16) return -1;
     for (int i = 0; i < len; i++) {
         char c = pwd[i];
         if (!(c >= '0' && c <= '9') &&
@@ -594,6 +594,13 @@ const char *goods_type_to_string(int type) {
     }
 }
 
+const char *operation_type_to_string(int type) {
+    switch (type) {
+        case OP_INBOUND:  return "入库";
+        case OP_OUTBOUND: return "出库";
+        default:          return "未知";
+    }
+}
 
 int role_get_permissions(UserRole role) {
     switch (role) {

@@ -1,6 +1,8 @@
 #ifndef ORDERWIN_H
 #define ORDERWIN_H
 
+#include "../public/common.h"
+
 /* ============================================================
  *  订单 UI 模块 — 所有与订单相关的窗口界面
  *
@@ -25,5 +27,11 @@ void searchOrderWin();
  *   驳回     → ORDER_REJECTED + 填写驳回原因
  * 每次操作后自动 order_svc_save() 落盘 */
 void auditOrderWin();
+
+/* 订单分页表格 — 供所有模块复用 */
+void showOrderList(const Order *head);
+
+/* 订单跟踪 — 输入订单号，显示完整详情+出入库记录+操作日志 */
+void trackOrderWin();
 
 #endif
