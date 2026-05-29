@@ -10,6 +10,53 @@
 #include "../service/order_service.h"
 #include "../service/transport_service.h"
 
+/* ---- Pdf 绘制辅助函数 ---- */
+static void drawQueryFrame(const char *title, int panel_h) {
+	setfillcolor(WHITE_COLOR);
+	fillrectangle(UI_PANEL_X, UI_PANEL_Y, UI_PANEL_X + UI_PANEL_W, UI_PANEL_Y + panel_h);
+	setlinecolor(FRAME_BLUE);
+	rectangle(UI_PANEL_X, UI_PANEL_Y, UI_PANEL_X + UI_PANEL_W, UI_PANEL_Y + panel_h);
+
+	settextstyle(FONT_HEADER_H, 0, _T("黑体"));
+	settextcolor(TEXT_MAIN);
+	outtextxy(UI_PANEL_X + (UI_PANEL_W - textwidth(title)) / 2, UI_PANEL_Y + 18, title);
+
+	char left[128], right[128];
+	sprintf(left, "当前用户: %s(%s)", current_user->name, role_to_string(current_user->role));
+	sprintf(right, "登录时间: %s", login_time_str[0] ? login_time_str : "----");
+	settextstyle(FONT_SMALL_H, FONT_SMALL_W, _T("黑体"));
+	outtextxy(UI_PANEL_X + 35, UI_PANEL_Y + 62, left);
+	outtextxy(UI_PANEL_X + UI_PANEL_W - 35 - textwidth(right), UI_PANEL_Y + 62, right);
+}
+
+static void drawTextBox(int x, int y, int w, int h, const char *text, int active) {
+	setlinecolor(active ? PRIMARY : INPUT_BORDER);
+	setfillcolor(WHITE_COLOR);
+	fillrectangle(x, y, x + w, y + h);
+	rectangle(x, y, x + w, y + h);
+	settextstyle(FONT_SMALL_H, FONT_SMALL_W, _T("黑体"));
+	settextcolor(TEXT_MAIN);
+	outtextxy(x + 5, y + (h - textheight(text)) / 2, (char *)text);
+}
+
+static void drawQueryButton(int x, int y, int w, int h) {
+	setlinecolor(INPUT_BORDER);
+	setfillcolor(RGB(165, 175, 185));
+	fillrectangle(x, y, x + w, y + h);
+	rectangle(x, y, x + w, y + h);
+	settextstyle(FONT_SMALL_H, FONT_SMALL_W, _T("黑体"));
+	settextcolor(WHITE_COLOR);
+	outtextxy(x + (w - textwidth("查询")) / 2, y + (h - textheight("查询")) / 2, "查询");
+}
+
+static void drawPageText(int y, int pages, int page) {
+	char page_text[96];
+	sprintf(page_text, "<-上页     共%d页 当前第%d页     ->下页", pages, page + 1);
+	settextstyle(FONT_BTN_H, FONT_BTN_W, _T("黑体"));
+	settextcolor(TEXT_MAIN);
+	outtextxy(UI_PANEL_X + (UI_PANEL_W - textwidth(page_text)) / 2, y, page_text);
+}
+
 /* ---- 工具函数 ---- */
 static int inRect(int mx, int my, int x, int y, int w, int h) {
 	return mx >= x && mx <= x + w && my >= y && my <= y + h;
