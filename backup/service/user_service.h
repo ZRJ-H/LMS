@@ -2,9 +2,10 @@
 #define USER_SERVICE_H
 #include "../public/common.h"
 
+#define USER_TXT_FILE "data/users.txt"
 #define USER_DAT_FILE "data/users.dat"
 
-/* 初始化：优先从 data/users.dat 加载，失败则用示例数据并落盘 */
+/* 初始化：优先从 data/users.txt 加载；旧 data/users.dat 仅用于一次性迁移 */
 int  user_svc_init();
 
 /* 持久化当前用户链表到文件 */

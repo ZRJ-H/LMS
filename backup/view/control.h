@@ -43,7 +43,7 @@ typedef struct window_t {
 	int width, height;
 	COLORREF bgColor;
 	int count;
-	CONTROL_T controls[15];
+	CONTROL_T controls[32];
 	int current;         /* 当前焦点控件索引 */
 } WINDOW_T;
 
@@ -52,6 +52,11 @@ void      set_bg_image(void *img);
 void      redraw_bg();
 void      drawWhiteCard();                      /* 绘制白卡片隔离层 */
 void      window_set_card(int on);              /* 开启/关闭卡片模式 */
+void      window_set_frame(int x, int y, int w, int h);  /* 设置页面边框（浅蓝矩形） */
+void      window_clear_frame();
+void      ui_draw_panel();
+void      ui_draw_title(const char *title);
+void      ui_draw_meta(const char *left, const char *right);
 void      control_show(CONTROL_T ctrl);
 WINDOW_T  window_show(WINDOW_T win);
 WINDOW_T  window_run(WINDOW_T win);

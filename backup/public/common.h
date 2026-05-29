@@ -60,12 +60,13 @@ typedef enum {
  * 订单状态枚举
  * ============================================================ */
 typedef enum {
-    ORDER_PENDING_REVIEW = 0,   /* 待审核 */
-    ORDER_REJECTED       = 1,   /* 已驳回 */
-    ORDER_PENDING_OUT    = 2,   /* 待出库（审核通过） */
-    ORDER_IN_TRANSIT     = 3,   /* 运输中 */
-    ORDER_DELIVERED      = 4,   /* 已送达 */
-    ORDER_COMPLETED      = 5    /* 已完成 */
+    ORDER_PENDING_REVIEW    = 0,   /* 待审核 */
+    ORDER_REJECTED          = 1,   /* 已驳回 */
+    ORDER_PENDING_OUT       = 2,   /* 待出库（审核通过） */
+    ORDER_IN_TRANSIT        = 3,   /* 运输中 */
+    ORDER_DELIVERED         = 4,   /* 已送达 */
+    ORDER_COMPLETED         = 5,   /* 已完成 */
+    ORDER_PENDING_TRANSPORT = 6    /* 待运输（入库后，等待调度） */
 } OrderStatus;
 
 /* ============================================================
@@ -158,9 +159,14 @@ typedef struct Order {
     int         user_id;                  /* 下单用户ID，关联 User.id */
     char        customer_name[NAME_LEN];
     char        customer_phone[PHONE_LEN];
+    char        customer_addr[ADDR_LEN];
     char        from_addr[ADDR_LEN];
     char        to_addr[ADDR_LEN];
+    char        goods_name[NAME_LEN];
     char        goods_type[GOODS_TYPE_LEN]; /* 货物类型 */
+    char        goods_weight[16];
+    int         goods_quantity;
+    char        goods_volume[16];
     char        expected_delivery_time[20]; /* YYYY-MM-DD HH:MM:SS */
     OrderStatus status;
     char        reject_reason[REASON_LEN];  /* 驳回原因 */
@@ -342,6 +348,7 @@ extern int driver_id_counter;
 extern int tracking_id_counter;
 extern int log_id_counter;
 extern int order_sequence;          /* 订单号当日序号 */
+extern int dispatch_sequence;       /* 调度单号当日序号 */
 
 /* 当前登录用户 */
 extern User *current_user;
@@ -368,6 +375,10 @@ void md5_hash(const char *input, char output[33]); /* MD5哈希，32位十六进
 void generate_order_id(char *buf);
 void init_order_sequence();
 
+/* ---- 调度单号生成 ---- */
+void generate_dispatch_id(char *buf);
+void init_dispatch_sequence();
+
 /* ---- 分页显示 ---- */
 typedef void (*PrintRowFn)(const void *record, int index);
 int show_paginated_list(const void *head,
@@ -378,7 +389,18 @@ int show_paginated_list(const void *head,
 /* ---- 通用链表操作 ---- */
 int  list_count(const void *head, size_t next_offset);  /* 返回链表的元素个数 */
 
-/* ---- 通用二进制文件读写 ---- */
+/* ---- 通用文本文件读写 ---- */
+int  txt_save_list(const char *filename,
+                   const void *head,
+                   size_t record_size,
+                   size_t next_offset);
+
+int  txt_load_list(const char *filename,
+                   void **head,
+                   size_t record_size,
+                   size_t next_offset);
+
+/* ---- 旧版二进制文件读写：仅用于 .dat -> .txt 迁移 ---- */
 int  bin_save_list(const char *filename,
                    const void *head,
                    size_t record_size,

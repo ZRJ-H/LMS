@@ -31,6 +31,7 @@ int driver_id_counter         = 0;
 int tracking_id_counter       = 0;
 int log_id_counter            = 0;
 int order_sequence            = 0;
+int dispatch_sequence         = 0;
 
 
 /* 当前登录用户 */
@@ -201,10 +202,11 @@ static void MD5Update(MD5_CTX *ctx, unsigned char *input, unsigned int ilen) {
 static void MD5Final(MD5_CTX *ctx, unsigned char digest[16]) {
     unsigned char bits[8];
     int idx, padLen;
-    static unsigned int PADDING = 0x80;
-    for (int i=0;i<8;i++) bits[i]=(unsigned char)(ctx->count[0]>>(i*8));
+    static unsigned char PADDING[64] = { 0x80 };
+    for (int i=0;i<4;i++) bits[i]=(unsigned char)(ctx->count[0]>>(i*8));
+    for (int i=0;i<4;i++) bits[i+4]=(unsigned char)(ctx->count[1]>>(i*8));
     idx=(ctx->count[0]>>3)&0x3F; padLen=idx<56?56-idx:120-idx;
-    MD5Update(ctx, (unsigned char*)&PADDING, padLen);
+    MD5Update(ctx, PADDING, padLen);
     MD5Update(ctx, bits, 8);
     for (int i=0;i<4;i++) {
         digest[i*4]  =(unsigned char)(ctx->state[i]&0xff);
@@ -230,7 +232,8 @@ void md5_hash(const char *input, char output[33]) {
  * ============================================================ */
 /* order sequence persistence: read from file, survive restart */
 void init_order_sequence() {
-    FILE *fp = fopen("data/order_seq.dat", "r");
+    FILE *fp = fopen("data/order_seq.txt", "r");
+    if (!fp) fp = fopen("data/order_seq.dat", "r");
     if (!fp) { order_sequence = 0; return; }
     char date_buf[16] = {0};
     int seq = 0;
@@ -248,7 +251,7 @@ void init_order_sequence() {
 static void save_order_sequence() {
     char today[16];
     get_current_date_str(today);
-    FILE *fp = fopen("data/order_seq.dat", "w");
+    FILE *fp = fopen("data/order_seq.txt", "w");
     if (fp) {
         fprintf(fp, "%s %d", today, order_sequence);
         fclose(fp);
@@ -256,14 +259,46 @@ static void save_order_sequence() {
 }
 
 void generate_order_id(char *buf) {
-	char date[16];
-    //获取当前日期字符串
+    char date[16];
     get_current_date_str(date);
-	//全局订单序号递增
-	order_sequence++;
-	// 生成订单号 
-	sprintf(buf,"WL%s%06d",date,order_sequence);
-	save_order_sequence();
+    order_sequence++;
+    sprintf(buf, "WL%s%06d", date, order_sequence);
+    save_order_sequence();
+}
+
+/* ---- 调度单号生成 ---- */
+static void save_dispatch_sequence() {
+    char today[16];
+    get_current_date_str(today);
+    FILE *fp = fopen("data/dispatch_seq.txt", "w");
+    if (fp) {
+        fprintf(fp, "%s %d", today, dispatch_sequence);
+        fclose(fp);
+    }
+}
+
+void init_dispatch_sequence() {
+    FILE *fp = fopen("data/dispatch_seq.txt", "r");
+    if (!fp) { dispatch_sequence = 0; return; }
+    char date_buf[16] = {0};
+    int seq = 0;
+    if (fscanf(fp, "%s %d", date_buf, &seq) == 2) {
+        char today[16];
+        get_current_date_str(today);
+        if (strcmp(date_buf, today) == 0)
+            dispatch_sequence = seq;
+        else
+            dispatch_sequence = 0;
+    }
+    fclose(fp);
+}
+
+void generate_dispatch_id(char *buf) {
+    char date[16];
+    get_current_date_str(date);
+    dispatch_sequence++;
+    sprintf(buf, "DD%s%06d", date, dispatch_sequence);
+    save_dispatch_sequence();
 }
 
 /* ============================================================
@@ -450,6 +485,403 @@ int show_paginated_list(const void *head,
  *            由于 next 永远在偏移 0，也可直接传 0。
  * ============================================================ */
 
+static void txt_write_field(FILE *fp, const char *s) {
+    if (!s) return;
+    while (*s) {
+        unsigned char ch = (unsigned char)*s++;
+        if (ch == '\\' || ch == '|') {
+            fputc('\\', fp);
+            fputc(ch, fp);
+        } else if (ch == '\n') {
+            fputs("\\n", fp);
+        } else if (ch == '\r') {
+            fputs("\\r", fp);
+        } else {
+            fputc(ch, fp);
+        }
+    }
+}
+
+static void txt_write_sep(FILE *fp) {
+    fputc('|', fp);
+}
+
+static void txt_copy_field(char *dst, size_t dst_size, const char *src) {
+    if (!dst || dst_size == 0) return;
+    if (!src) src = "";
+    strncpy(dst, src, dst_size - 1);
+    dst[dst_size - 1] = '\0';
+}
+
+static int txt_split_fields(char *line, char fields[][512], int max_fields) {
+    int count = 0;
+    int pos = 0;
+    for (char *p = line; *p && count < max_fields; p++) {
+        char ch = *p;
+        if (ch == '\n' || ch == '\r') break;
+        if (ch == '\\') {
+            p++;
+            if (*p == 'n') ch = '\n';
+            else if (*p == 'r') ch = '\r';
+            else if (*p == '\0') break;
+            else ch = *p;
+        } else if (ch == '|') {
+            fields[count][pos] = '\0';
+            count++;
+            pos = 0;
+            continue;
+        }
+        if (pos < 511) fields[count][pos++] = ch;
+    }
+    if (count < max_fields) {
+        fields[count][pos] = '\0';
+        count++;
+    }
+    return count;
+}
+
+static const char *txt_record_name(size_t record_size) {
+    if (record_size == sizeof(User)) return "User";
+    if (record_size == sizeof(Order)) return "Order";
+    if (record_size == sizeof(Warehouse)) return "Warehouse";
+    if (record_size == sizeof(InOutRecord)) return "InOutRecord";
+    if (record_size == sizeof(Inventory)) return "Inventory";
+    if (record_size == sizeof(OperationLog)) return "OperationLog";
+    if (record_size == sizeof(Vehicle)) return "Vehicle";
+    if (record_size == sizeof(Driver)) return "Driver";
+    if (record_size == sizeof(Route)) return "Route";
+    if (record_size == sizeof(Dispatch)) return "Dispatch";
+    if (record_size == sizeof(TransportTracking)) return "TransportTracking";
+    return NULL;
+}
+
+static void txt_write_header(FILE *fp, const char *type_name) {
+    if (strcmp(type_name, "User") == 0)
+        fprintf(fp, "#type=User\n#fields=id|name|role|phone|password_md5|failed_attempts|lockout_until\n");
+    else if (strcmp(type_name, "Order") == 0)
+        fprintf(fp, "#type=Order\n#fields=order_id|user_id|customer_name|customer_phone|from_addr|to_addr|goods_type|expected_delivery_time|status|reject_reason|customer_addr|goods_name|goods_weight|goods_quantity|goods_volume\n");
+    else if (strcmp(type_name, "Warehouse") == 0)
+        fprintf(fp, "#type=Warehouse\n#fields=id|name|address|manager_id\n");
+    else if (strcmp(type_name, "InOutRecord") == 0)
+        fprintf(fp, "#type=InOutRecord\n#fields=id|order_id|goods_id|goods_type|quantity|op_type|op_time|location_id|operator_id\n");
+    else if (strcmp(type_name, "Inventory") == 0)
+        fprintf(fp, "#type=Inventory\n#fields=id|goods_id|goods_type|warehouse_id|quantity|location_id|in_time\n");
+    else if (strcmp(type_name, "OperationLog") == 0)
+        fprintf(fp, "#type=OperationLog\n#fields=id|operator_id|operator_name|action|timestamp\n");
+    else if (strcmp(type_name, "Vehicle") == 0)
+        fprintf(fp, "#type=Vehicle\n#fields=id|plate_no|type|load_capacity|volume|capacity|status\n");
+    else if (strcmp(type_name, "Driver") == 0)
+        fprintf(fp, "#type=Driver\n#fields=id|name|id_card|phone|status\n");
+    else if (strcmp(type_name, "Route") == 0)
+        fprintf(fp, "#type=Route\n#fields=id|origin|destination|distance|estimated_time\n");
+    else if (strcmp(type_name, "Dispatch") == 0)
+        fprintf(fp, "#type=Dispatch\n#fields=dispatch_id|order_id|vehicle_id|driver_id|route_id|planned_departure|planned_arrival|status\n");
+    else if (strcmp(type_name, "TransportTracking") == 0)
+        fprintf(fp, "#type=TransportTracking\n#fields=track_id|dispatch_id|node_status|exception_reason|update_time|dispatcher_id\n");
+}
+
+static void txt_save_record(FILE *fp, const void *record, size_t record_size) {
+    if (record_size == sizeof(User)) {
+        const User *u = (const User *)record;
+        fprintf(fp, "%d", u->id); txt_write_sep(fp);
+        txt_write_field(fp, u->name); txt_write_sep(fp);
+        fprintf(fp, "%d", (int)u->role); txt_write_sep(fp);
+        txt_write_field(fp, u->phone); txt_write_sep(fp);
+        txt_write_field(fp, u->password); txt_write_sep(fp);
+        fprintf(fp, "%d|%lld\n", u->failed_attempts, (long long)u->lockout_until);
+    } else if (record_size == sizeof(Order)) {
+        const Order *o = (const Order *)record;
+        txt_write_field(fp, o->order_id); txt_write_sep(fp);
+        fprintf(fp, "%d", o->user_id); txt_write_sep(fp);
+        txt_write_field(fp, o->customer_name); txt_write_sep(fp);
+        txt_write_field(fp, o->customer_phone); txt_write_sep(fp);
+        txt_write_field(fp, o->from_addr); txt_write_sep(fp);
+        txt_write_field(fp, o->to_addr); txt_write_sep(fp);
+        txt_write_field(fp, o->goods_type); txt_write_sep(fp);
+        txt_write_field(fp, o->expected_delivery_time); txt_write_sep(fp);
+        fprintf(fp, "%d", (int)o->status); txt_write_sep(fp);
+        txt_write_field(fp, o->reject_reason); txt_write_sep(fp);
+        txt_write_field(fp, o->customer_addr); txt_write_sep(fp);
+        txt_write_field(fp, o->goods_name); txt_write_sep(fp);
+        txt_write_field(fp, o->goods_weight); txt_write_sep(fp);
+        fprintf(fp, "%d", o->goods_quantity); txt_write_sep(fp);
+        txt_write_field(fp, o->goods_volume);
+        fputc('\n', fp);
+    } else if (record_size == sizeof(Warehouse)) {
+        const Warehouse *w = (const Warehouse *)record;
+        fprintf(fp, "%d", w->id); txt_write_sep(fp);
+        txt_write_field(fp, w->name); txt_write_sep(fp);
+        txt_write_field(fp, w->address); txt_write_sep(fp);
+        fprintf(fp, "%d\n", w->manager_id);
+    } else if (record_size == sizeof(InOutRecord)) {
+        const InOutRecord *r = (const InOutRecord *)record;
+        fprintf(fp, "%d", r->id); txt_write_sep(fp);
+        txt_write_field(fp, r->order_id); txt_write_sep(fp);
+        fprintf(fp, "%d", r->goods_id); txt_write_sep(fp);
+        txt_write_field(fp, r->goods_type); txt_write_sep(fp);
+        fprintf(fp, "%d|%d", r->quantity, (int)r->op_type); txt_write_sep(fp);
+        txt_write_field(fp, r->op_time); txt_write_sep(fp);
+        txt_write_field(fp, r->location_id); txt_write_sep(fp);
+        fprintf(fp, "%d\n", r->operator_id);
+    } else if (record_size == sizeof(Inventory)) {
+        const Inventory *v = (const Inventory *)record;
+        fprintf(fp, "%d|%d", v->id, v->goods_id); txt_write_sep(fp);
+        txt_write_field(fp, v->goods_type); txt_write_sep(fp);
+        fprintf(fp, "%d|%d", v->warehouse_id, v->quantity); txt_write_sep(fp);
+        txt_write_field(fp, v->location_id); txt_write_sep(fp);
+        txt_write_field(fp, v->in_time);
+        fputc('\n', fp);
+    } else if (record_size == sizeof(OperationLog)) {
+        const OperationLog *l = (const OperationLog *)record;
+        fprintf(fp, "%d|%d", l->id, l->operator_id); txt_write_sep(fp);
+        txt_write_field(fp, l->operator_name); txt_write_sep(fp);
+        txt_write_field(fp, l->action); txt_write_sep(fp);
+        txt_write_field(fp, l->timestamp);
+        fputc('\n', fp);
+    } else if (record_size == sizeof(Vehicle)) {
+        const Vehicle *v = (const Vehicle *)record;
+        fprintf(fp, "%d", v->id); txt_write_sep(fp);
+        txt_write_field(fp, v->plate_no); txt_write_sep(fp);
+        fprintf(fp, "%d", (int)v->type); txt_write_sep(fp);
+        fprintf(fp, "%.1f", v->load_capacity); txt_write_sep(fp);
+        fprintf(fp, "%.1f", v->volume); txt_write_sep(fp);
+        fprintf(fp, "%.1f", v->capacity); txt_write_sep(fp);
+        fprintf(fp, "%d\n", (int)v->status);
+    } else if (record_size == sizeof(Driver)) {
+        const Driver *d = (const Driver *)record;
+        fprintf(fp, "%d", d->id); txt_write_sep(fp);
+        txt_write_field(fp, d->name); txt_write_sep(fp);
+        txt_write_field(fp, d->id_card); txt_write_sep(fp);
+        txt_write_field(fp, d->phone); txt_write_sep(fp);
+        fprintf(fp, "%d\n", (int)d->status);
+    } else if (record_size == sizeof(Route)) {
+        const Route *r = (const Route *)record;
+        fprintf(fp, "%d", r->id); txt_write_sep(fp);
+        txt_write_field(fp, r->origin); txt_write_sep(fp);
+        txt_write_field(fp, r->destination); txt_write_sep(fp);
+        fprintf(fp, "%.1f", r->distance); txt_write_sep(fp);
+        txt_write_field(fp, r->estimated_time);
+        fputc('\n', fp);
+    } else if (record_size == sizeof(Dispatch)) {
+        const Dispatch *d = (const Dispatch *)record;
+        txt_write_field(fp, d->dispatch_id); txt_write_sep(fp);
+        txt_write_field(fp, d->order_id); txt_write_sep(fp);
+        fprintf(fp, "%d|%d|%d", d->vehicle_id, d->driver_id, d->route_id); txt_write_sep(fp);
+        txt_write_field(fp, d->planned_departure); txt_write_sep(fp);
+        txt_write_field(fp, d->planned_arrival); txt_write_sep(fp);
+        fprintf(fp, "%d\n", (int)d->status);
+    } else if (record_size == sizeof(TransportTracking)) {
+        const TransportTracking *t = (const TransportTracking *)record;
+        fprintf(fp, "%d", t->track_id); txt_write_sep(fp);
+        txt_write_field(fp, t->dispatch_id); txt_write_sep(fp);
+        fprintf(fp, "%d", (int)t->node_status); txt_write_sep(fp);
+        txt_write_field(fp, t->exception_reason); txt_write_sep(fp);
+        txt_write_field(fp, t->update_time); txt_write_sep(fp);
+        fprintf(fp, "%d\n", t->dispatcher_id);
+    }
+}
+
+static int txt_parse_record(const char *line, void *record, size_t record_size) {
+    char buf[2048];
+    char fields[20][512];
+    strncpy(buf, line, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = '\0';
+    int n = txt_split_fields(buf, fields, 20);
+    memset(record, 0, record_size);
+
+    if (record_size == sizeof(User) && n >= 7) {
+        User *u = (User *)record;
+        u->id = atoi(fields[0]);
+        txt_copy_field(u->name, NAME_LEN, fields[1]);
+        u->role = (UserRole)atoi(fields[2]);
+        txt_copy_field(u->phone, PHONE_LEN, fields[3]);
+        txt_copy_field(u->password, PASSWORD_LEN, fields[4]);
+        u->failed_attempts = atoi(fields[5]);
+        u->lockout_until = (time_t)atoll(fields[6]);
+        return 0;
+    } else if (record_size == sizeof(Order) && n >= 10) {
+        Order *o = (Order *)record;
+        txt_copy_field(o->order_id, ORDER_ID_LEN, fields[0]);
+        o->user_id = atoi(fields[1]);
+        txt_copy_field(o->customer_name, NAME_LEN, fields[2]);
+        txt_copy_field(o->customer_phone, PHONE_LEN, fields[3]);
+        txt_copy_field(o->from_addr, ADDR_LEN, fields[4]);
+        txt_copy_field(o->to_addr, ADDR_LEN, fields[5]);
+        txt_copy_field(o->goods_type, GOODS_TYPE_LEN, fields[6]);
+        txt_copy_field(o->expected_delivery_time, sizeof(o->expected_delivery_time), fields[7]);
+        o->status = (OrderStatus)atoi(fields[8]);
+        txt_copy_field(o->reject_reason, REASON_LEN, fields[9]);
+        if (n >= 15) {
+            txt_copy_field(o->customer_addr, ADDR_LEN, fields[10]);
+            txt_copy_field(o->goods_name, NAME_LEN, fields[11]);
+            txt_copy_field(o->goods_weight, sizeof(o->goods_weight), fields[12]);
+            o->goods_quantity = atoi(fields[13]);
+            txt_copy_field(o->goods_volume, sizeof(o->goods_volume), fields[14]);
+        } else {
+            o->customer_addr[0] = '\0';
+            txt_copy_field(o->goods_name, NAME_LEN, fields[6]);
+            o->goods_weight[0] = '\0';
+            o->goods_quantity = 1;
+            o->goods_volume[0] = '\0';
+        }
+        return 0;
+    } else if (record_size == sizeof(Warehouse) && n >= 4) {
+        Warehouse *w = (Warehouse *)record;
+        w->id = atoi(fields[0]);
+        txt_copy_field(w->name, NAME_LEN, fields[1]);
+        txt_copy_field(w->address, ADDR_LEN, fields[2]);
+        w->manager_id = atoi(fields[3]);
+        return 0;
+    } else if (record_size == sizeof(InOutRecord) && n >= 9) {
+        InOutRecord *r = (InOutRecord *)record;
+        r->id = atoi(fields[0]);
+        txt_copy_field(r->order_id, ORDER_ID_LEN, fields[1]);
+        r->goods_id = atoi(fields[2]);
+        txt_copy_field(r->goods_type, GOODS_TYPE_LEN, fields[3]);
+        r->quantity = atoi(fields[4]);
+        r->op_type = (OperationType)atoi(fields[5]);
+        txt_copy_field(r->op_time, sizeof(r->op_time), fields[6]);
+        txt_copy_field(r->location_id, LOCATION_LEN, fields[7]);
+        r->operator_id = atoi(fields[8]);
+        return 0;
+    } else if (record_size == sizeof(Inventory) && n >= 7) {
+        Inventory *v = (Inventory *)record;
+        v->id = atoi(fields[0]);
+        v->goods_id = atoi(fields[1]);
+        txt_copy_field(v->goods_type, GOODS_TYPE_LEN, fields[2]);
+        v->warehouse_id = atoi(fields[3]);
+        v->quantity = atoi(fields[4]);
+        txt_copy_field(v->location_id, LOCATION_LEN, fields[5]);
+        txt_copy_field(v->in_time, sizeof(v->in_time), fields[6]);
+        return 0;
+    } else if (record_size == sizeof(OperationLog) && n >= 5) {
+        OperationLog *l = (OperationLog *)record;
+        l->id = atoi(fields[0]);
+        l->operator_id = atoi(fields[1]);
+        txt_copy_field(l->operator_name, NAME_LEN, fields[2]);
+        txt_copy_field(l->action, ACTION_LEN, fields[3]);
+        txt_copy_field(l->timestamp, sizeof(l->timestamp), fields[4]);
+        return 0;
+    } else if (record_size == sizeof(Vehicle) && n >= 7) {
+        Vehicle *v = (Vehicle *)record;
+        v->id = atoi(fields[0]);
+        txt_copy_field(v->plate_no, PLATE_LEN, fields[1]);
+        v->type = (VehicleType)atoi(fields[2]);
+        v->load_capacity = (float)atof(fields[3]);
+        v->volume = (float)atof(fields[4]);
+        v->capacity = (float)atof(fields[5]);
+        v->status = (VehicleStatus)atoi(fields[6]);
+        return 0;
+    } else if (record_size == sizeof(Driver) && n >= 5) {
+        Driver *d = (Driver *)record;
+        d->id = atoi(fields[0]);
+        txt_copy_field(d->name, NAME_LEN, fields[1]);
+        txt_copy_field(d->id_card, ID_CARD_LEN, fields[2]);
+        txt_copy_field(d->phone, PHONE_LEN, fields[3]);
+        d->status = (DriverStatus)atoi(fields[4]);
+        return 0;
+    } else if (record_size == sizeof(Route) && n >= 5) {
+        Route *r = (Route *)record;
+        r->id = atoi(fields[0]);
+        txt_copy_field(r->origin, ADDR_LEN, fields[1]);
+        txt_copy_field(r->destination, ADDR_LEN, fields[2]);
+        r->distance = (float)atof(fields[3]);
+        txt_copy_field(r->estimated_time, sizeof(r->estimated_time), fields[4]);
+        return 0;
+    } else if (record_size == sizeof(Dispatch) && n >= 8) {
+        Dispatch *d = (Dispatch *)record;
+        txt_copy_field(d->dispatch_id, DISPATCH_ID_LEN, fields[0]);
+        txt_copy_field(d->order_id, ORDER_ID_LEN, fields[1]);
+        d->vehicle_id = atoi(fields[2]);
+        d->driver_id = atoi(fields[3]);
+        d->route_id = atoi(fields[4]);
+        txt_copy_field(d->planned_departure, sizeof(d->planned_departure), fields[5]);
+        txt_copy_field(d->planned_arrival, sizeof(d->planned_arrival), fields[6]);
+        d->status = (DispatchStatus)atoi(fields[7]);
+        return 0;
+    } else if (record_size == sizeof(TransportTracking) && n >= 6) {
+        TransportTracking *t = (TransportTracking *)record;
+        t->track_id = atoi(fields[0]);
+        txt_copy_field(t->dispatch_id, DISPATCH_ID_LEN, fields[1]);
+        t->node_status = (DispatchStatus)atoi(fields[2]);
+        txt_copy_field(t->exception_reason, REASON_LEN, fields[3]);
+        txt_copy_field(t->update_time, sizeof(t->update_time), fields[4]);
+        t->dispatcher_id = atoi(fields[5]);
+        return 0;
+    }
+    return -1;
+}
+
+int txt_save_list(const char *filename,
+                  const void *head,
+                  size_t record_size,
+                  size_t next_offset) {
+    FILE *fp = fopen(filename, "w");
+    if (!fp) return -1;
+
+    const char *type_name = txt_record_name(record_size);
+    if (!type_name) {
+        fclose(fp);
+        return -1;
+    }
+
+    int count = list_count(head, next_offset);
+    fprintf(fp, "# LMS readable text data v1\n");
+    txt_write_header(fp, type_name);
+    fprintf(fp, "#count=%d\n", count);
+
+    const char *p = (const char *)head;
+    while (p) {
+        txt_save_record(fp, p, record_size);
+        p = *(const char **)(p + next_offset);
+    }
+
+    fclose(fp);
+    return count;
+}
+
+int txt_load_list(const char *filename,
+                  void **head,
+                  size_t record_size,
+                  size_t next_offset) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) return -1;
+
+    const char *type_name = txt_record_name(record_size);
+    if (!type_name) {
+        fclose(fp);
+        return -1;
+    }
+
+    char line[2048];
+
+    *head = NULL;
+    void *tail = NULL;
+    int loaded = 0;
+
+    while (fgets(line, sizeof(line), fp)) {
+        if (line[0] == '#' || line[0] == '\n' || line[0] == '\r') continue;
+        void *node = malloc(record_size);
+        if (!node) break;
+        if (txt_parse_record(line, node, record_size) != 0) {
+            free(node);
+            continue;
+        }
+
+        *(void **)((char *)node + next_offset) = NULL;
+        if (!*head) {
+            *head = node;
+        } else {
+            *(void **)((char *)tail + next_offset) = node;
+        }
+        tail = node;
+        loaded++;
+    }
+
+    fclose(fp);
+    return loaded;
+}
+
 /* 将链表保存到二进制文件，返回写入的记录数，失败返回 -1 */
 int bin_save_list(const char *filename,
                   const void *head,
@@ -545,13 +977,14 @@ const char *role_to_string(UserRole role) {
 
 const char *order_status_to_string(OrderStatus status) {
     switch (status) {
-        case ORDER_PENDING_REVIEW: return "待审核";
-        case ORDER_REJECTED:       return "已驳回";
-        case ORDER_PENDING_OUT:    return "待出库";
-        case ORDER_IN_TRANSIT:     return "运输中";
-        case ORDER_DELIVERED:      return "已送达";
-        case ORDER_COMPLETED:      return "已完成";
-        default:                   return "未知";
+        case ORDER_PENDING_REVIEW:    return "待审核";
+        case ORDER_REJECTED:          return "已驳回";
+        case ORDER_PENDING_OUT:       return "待出库";
+        case ORDER_IN_TRANSIT:        return "运输中";
+        case ORDER_DELIVERED:         return "已送达";
+        case ORDER_COMPLETED:         return "已完成";
+        case ORDER_PENDING_TRANSPORT: return "待运输";
+        default:                      return "未知";
     }
 }
 

@@ -17,6 +17,15 @@
  *  页面标题栏 — 在 window_show() 之后绘制标题 + 用户信息
  * ============================================================ */
 static void drawPageHeader(const char *title) {
+	char info_left_new[128];
+	char info_right_new[128];
+	sprintf(info_left_new, "当前用户: %s(%s)",
+	        current_user->name, role_to_string(current_user->role));
+	sprintf(info_right_new, "登录时间: %s",
+	        login_time_str[0] ? login_time_str : "----");
+	ui_draw_title(title);
+	ui_draw_meta(info_left_new, info_right_new);
+	return;
 	/* 标题 */
 	settextstyle(FONT_TITLE_H - 4, 0, _T("黑体"));
 	settextcolor(TEXT_MAIN);
@@ -36,6 +45,52 @@ static void drawPageHeader(const char *title) {
 	sprintf(info_right, "登录时间：%s",
 	        login_time_str[0] ? login_time_str : "----");
 	outtextxy(480, 105, info_right);
+}
+
+static void drawQueryFrame(const char *title, int panel_h) {
+	setfillcolor(WHITE_COLOR);
+	fillrectangle(UI_PANEL_X, UI_PANEL_Y, UI_PANEL_X + UI_PANEL_W, UI_PANEL_Y + panel_h);
+	setlinecolor(FRAME_BLUE);
+	rectangle(UI_PANEL_X, UI_PANEL_Y, UI_PANEL_X + UI_PANEL_W, UI_PANEL_Y + panel_h);
+
+	settextstyle(FONT_HEADER_H, 0, _T("黑体"));
+	settextcolor(TEXT_MAIN);
+	outtextxy(UI_PANEL_X + (UI_PANEL_W - textwidth(title)) / 2, UI_PANEL_Y + 18, title);
+
+	char left[128], right[128];
+	sprintf(left, "当前用户: %s(%s)", current_user->name, role_to_string(current_user->role));
+	sprintf(right, "登录时间: %s", login_time_str[0] ? login_time_str : "----");
+	settextstyle(FONT_SMALL_H, FONT_SMALL_W, _T("黑体"));
+	outtextxy(UI_PANEL_X + 35, UI_PANEL_Y + 62, left);
+	outtextxy(UI_PANEL_X + UI_PANEL_W - 35 - textwidth(right), UI_PANEL_Y + 62, right);
+}
+
+static void drawTextBox(int x, int y, int w, int h, const char *text, int active) {
+	setlinecolor(active ? PRIMARY : INPUT_BORDER);
+	setfillcolor(WHITE_COLOR);
+	fillrectangle(x, y, x + w, y + h);
+	rectangle(x, y, x + w, y + h);
+	settextstyle(FONT_SMALL_H, FONT_SMALL_W, _T("黑体"));
+	settextcolor(TEXT_MAIN);
+	outtextxy(x + 5, y + (h - textheight(text)) / 2, (char *)text);
+}
+
+static void drawQueryButton(int x, int y, int w, int h) {
+	setlinecolor(INPUT_BORDER);
+	setfillcolor(RGB(165, 175, 185));
+	fillrectangle(x, y, x + w, y + h);
+	rectangle(x, y, x + w, y + h);
+	settextstyle(FONT_SMALL_H, FONT_SMALL_W, _T("黑体"));
+	settextcolor(WHITE_COLOR);
+	outtextxy(x + (w - textwidth("查询")) / 2, y + (h - textheight("查询")) / 2, "查询");
+}
+
+static void drawPageText(int y, int pages, int page) {
+	char page_text[96];
+	sprintf(page_text, "<-上页     共%d页 当前第%d页     ->下页", pages, page + 1);
+	settextstyle(FONT_BTN_H, FONT_BTN_W, _T("黑体"));
+	settextcolor(TEXT_MAIN);
+	outtextxy(UI_PANEL_X + (UI_PANEL_W - textwidth(page_text)) / 2, y, page_text);
 }
 
 /* ============================================================
@@ -127,7 +182,125 @@ static void showUserList(const User *head) {
 }
 
 /* ------- 用户条件查询 ------- */
+static int user_matches_query_pdf(const User *u, const char *keyword) {
+	return keyword[0] == '\0' || strstr(u->name, keyword) != NULL;
+}
+
+static int user_query_total_pages(const char *keyword) {
+	int total = 0;
+	for (User *p = user_svc_list_all(); p; p = p->next) {
+		if (user_matches_query_pdf(p, keyword)) total++;
+	}
+	return total ? (total + 3) / 4 : 1;
+}
+
+static void draw_user_query_pdf(const char *keyword, int page) {
+	const int col_w[4] = {80, 100, 100, 80};
+	const char *headers[4] = {"用户id", "用户名", "角色", "状态"};
+	int header_h = 22, row_h = 22;
+	int total_w = col_w[0] + col_w[1] + col_w[2] + col_w[3];
+	int table_x = UI_PANEL_X + (UI_PANEL_W - total_w) / 2;
+	int table_y = UI_PANEL_Y + 122;
+	int start = page * 4;
+	int shown = 0, idx = 0, x;
+	char id_buf[32];
+
+	cleardevice();
+	redraw_bg();
+	window_clear_frame();
+	window_set_card(1);
+	drawQueryFrame("智能物流管理系统用户查询界面", 285);
+
+	settextstyle(FONT_BTN_H, FONT_BTN_W, _T("黑体"));
+	settextcolor(TEXT_MAIN);
+	outtextxy(UI_PANEL_X + 60, UI_PANEL_Y + 91, "用户名搜索:");
+	drawTextBox(UI_PANEL_X + 145, UI_PANEL_Y + 84, 150, 24, keyword, 1);
+	drawQueryButton(UI_PANEL_X + 312, UI_PANEL_Y + 84, 65, 26);
+
+	settextstyle(FONT_TABLE_H, FONT_TABLE_W, _T("黑体"));
+	settextcolor(TEXT_MAIN);
+	setfillcolor(BG_TABLE_HDR);
+	x = table_x;
+	for (int c = 0; c < 4; c++) {
+		fillrectangle(x, table_y, x + col_w[c], table_y + header_h);
+		setlinecolor(GRAY_LINE);
+		rectangle(x, table_y, x + col_w[c], table_y + header_h);
+		outtextxy(x + 5, table_y + 6, (char *)headers[c]);
+		x += col_w[c];
+	}
+
+	for (User *p = user_svc_list_all(); p && shown < 4; p = p->next) {
+		if (!user_matches_query_pdf(p, keyword)) continue;
+		if (idx++ < start) continue;
+		int y = table_y + header_h + shown * row_h;
+		setfillcolor(WHITE_COLOR);
+		fillrectangle(table_x, y, table_x + total_w, y + row_h);
+		setlinecolor(GRAY_LINE);
+		rectangle(table_x, y, table_x + total_w, y + row_h);
+		x = table_x;
+		settextcolor(TEXT_MAIN);
+		sprintf(id_buf, "%d", p->id);
+		outtextxy(x + 5, y + 5, id_buf); x += col_w[0];
+		outtextxy(x + 5, y + 5, p->name); x += col_w[1];
+		outtextxy(x + 5, y + 5, (char *)role_to_string(p->role)); x += col_w[2];
+		outtextxy(x + 5, y + 5, p->lockout_until > time(NULL) ? "锁定" : "可用");
+		int vx = table_x;
+		for (int c = 0; c < 4; c++) {
+			vx += col_w[c];
+			line(vx, y, vx, y + row_h);
+		}
+		shown++;
+	}
+	if (shown == 0) {
+		settextcolor(TEXT_MUTED);
+		outtextxy(table_x + 130, table_y + header_h + 42, "暂无匹配用户");
+	}
+
+	settextstyle(FONT_SMALL_H, FONT_SMALL_W, _T("黑体"));
+	drawPageText(UI_PANEL_Y + 240, user_query_total_pages(keyword), page);
+}
+
+static void searchUserWinPdf() {
+	char keyword[64] = {0};
+	int page = 0;
+
+	while (1) {
+		int pages = user_query_total_pages(keyword);
+		if (page >= pages) page = pages - 1;
+		draw_user_query_pdf(keyword, page);
+		ExMessage msg = getmessage(EX_KEY | EX_CHAR | EX_MOUSE);
+
+		if (msg.message == WM_LBUTTONDOWN) {
+			if (msg.x >= UI_PANEL_X + UI_PANEL_W - 70 &&
+			    msg.x <= UI_PANEL_X + UI_PANEL_W &&
+			    msg.y >= UI_PANEL_Y + 250) return;
+		}
+		else if (msg.message == WM_KEYDOWN) {
+			if (msg.vkcode == VK_ESCAPE) return;
+			if (msg.vkcode == VK_BACK) {
+				int len = (int)strlen(keyword);
+				if (len > 0) { keyword[len - 1] = '\0'; page = 0; }
+			}
+			if (msg.vkcode == VK_LEFT && page > 0) page--;
+			if (msg.vkcode == VK_RIGHT && page < pages - 1) page++;
+		}
+		else if (msg.message == WM_CHAR) {
+			char ch = (char)msg.ch;
+			if (ch >= 32 && ch <= 126) {
+				int len = (int)strlen(keyword);
+				if (len < 31) {
+					keyword[len] = ch;
+					keyword[len + 1] = '\0';
+					page = 0;
+				}
+			}
+		}
+	}
+}
+
 static void searchUserWin() {
+	searchUserWinPdf();
+	return;
 	WINDOW_T win = {
 		220, 160, 360, 260, WHITE_COLOR, 5, {
 			{230, 170, 340, 30, "用户查询",
@@ -193,7 +366,7 @@ static void sysAdminWin() {
 	};
 
 	/* 复用主菜单网格 Y 坐标，左列 X 偏移适配子窗口 */
-	int sub_col_x[2] = {MENU_COL_LEFT - 60, MENU_COL_RIGHT - 60};
+	int sub_col_x[2] = {MENU_COL_LEFT, MENU_COL_RIGHT};
 
 	WINDOW_T win;
 	win.x = 60;  win.y = 20;  win.width = 680;  win.height = 560;
@@ -215,9 +388,11 @@ static void sysAdminWin() {
 	}
 	win.current = 0;
 
+	window_clear_frame();
+	window_set_card(1);
 	while (1) {
 		window_show(win);
-		drawPageHeader("智能物流管理系统 — 系统管理");
+		drawPageHeader("智能物流管理系统系统管理界面");
 		win = window_run(win);
 
 		switch (win.current) {
@@ -254,7 +429,52 @@ static void sysAdminWin() {
 }
 
 /* ========== 订单管理子窗口 ========== */
+static void orderModifyStubWin() {
+	MessageBoxA(GetHWnd(), "订单修改（扩展功能）", "提示", MB_OK);
+}
+
+static void orderMgmtWinPdf() {
+	MenuItem om[6] = {
+		{"1. 创建订单", 0, (void(*)())createOrderWin, 0},
+		{"2. 订单审核", 0, (void(*)())auditOrderWin, 0},
+		{"3. 订单查询", 0, (void(*)())searchOrderWin, 0},
+		{"4. 订单修改", 0, (void(*)())orderModifyStubWin, 0},
+		{"5. 订单跟踪", 0, (void(*)())trackOrderWin, 0},
+		{"6. 返回上级", 0, NULL, 0},
+	};
+	WINDOW_T win;
+	win.x = 0; win.y = 0; win.width = WIN_W; win.height = WIN_H;
+	win.bgColor = WHITE_COLOR;
+	win.count = 6;
+	for (int i = 0; i < 6; i++) {
+		CONTROL_T c;
+		c.x = (i % 2 == 0) ? MENU_COL_LEFT : MENU_COL_RIGHT;
+		c.y = MENU_ROWS_Y[i / 2];
+		c.width = MENU_W; c.height = MENU_H;
+		strcpy(c.text, om[i].text);
+		c.bgColor1 = PRIMARY; c.bgColor2 = WHITE_COLOR;
+		c.textColor = WHITE_COLOR; c.textColor2 = TEXT_MAIN;
+		c.type = BUTTON;
+		c.state = (i == 0) ? 1 : 0;
+		c.visible = 0; c.sel_index = 0;
+		win.controls[i] = c;
+	}
+	win.current = 0;
+
+	window_clear_frame();
+	window_set_card(1);
+	while (1) {
+		window_show(win);
+		drawPageHeader("智能物流管理系统订单管理界面");
+		win = window_run(win);
+		if (win.current == 5) return;
+		if (om[win.current].action) om[win.current].action();
+	}
+}
+
 static void orderMgmtWin() {
+	orderMgmtWinPdf();
+	return;
 	WINDOW_T win = {
 		220, 120, 360, 360, WHITE_COLOR, 6, {
 			{230, 135, 340, 30, "订单管理",
@@ -284,6 +504,9 @@ static void orderMgmtWin() {
 
 /* ========== 密码修改窗口 ========== */
 static void changePasswordWin() {
+	window_clear_frame();
+	window_set_card(1);
+
 	WINDOW_T win = {
 		220, 160, 360, 310, WHITE_COLOR, 7, {
 			{230, 170, 340, 30, "修改密码",
@@ -378,6 +601,141 @@ static void showInventoryList(const Inventory *head) {
 	                  head, offsetof(Inventory, next), drawInventoryRow, PAGE_SIZE);
 }
 
+static int inventory_matches_query_pdf(const Inventory *inv,
+                                       const char *goods_name,
+                                       const char *location_id) {
+	if (goods_name[0] && strstr(inv->goods_type, goods_name) == NULL) return 0;
+	if (location_id[0] && strstr(inv->location_id, location_id) == NULL) return 0;
+	return 1;
+}
+
+static int inventory_query_total_pages(const char *goods_name, const char *location_id) {
+	int total = 0;
+	for (Inventory *p = inventory_list_head; p; p = p->next) {
+		if (inventory_matches_query_pdf(p, goods_name, location_id)) total++;
+	}
+	return total ? (total + 2) / 3 : 1;
+}
+
+static void draw_inventory_query_pdf(const char *goods_name,
+                                     const char *location_id,
+                                     int focus,
+                                     int page) {
+	const int col_w[6] = {45, 85, 75, 70, 70, 90};
+	const char *headers[6] = {"序号", "货物名称", "货物类型", "库存数量", "存储货位", "入库时间"};
+	int header_h = 22, row_h = 22;
+	int total_w = col_w[0] + col_w[1] + col_w[2] + col_w[3] + col_w[4] + col_w[5];
+	int table_x = UI_PANEL_X + (UI_PANEL_W - total_w) / 2;
+	int table_y = UI_PANEL_Y + 122;
+	int start = page * 3;
+	int shown = 0, idx = 0, x;
+	char buf[64];
+
+	cleardevice();
+	redraw_bg();
+	window_clear_frame();
+	window_set_card(1);
+	drawQueryFrame("智能物流管理系统库存查询界面", 315);
+
+	settextstyle(FONT_SMALL_H, FONT_SMALL_W, _T("黑体"));
+	settextcolor(TEXT_MAIN);
+	outtextxy(UI_PANEL_X + 35, UI_PANEL_Y + 91, "货位名称:");
+	drawTextBox(UI_PANEL_X + 105, UI_PANEL_Y + 84, 100, 24, goods_name, focus == 0);
+	outtextxy(UI_PANEL_X + 230, UI_PANEL_Y + 91, "货位编号:");
+	drawTextBox(UI_PANEL_X + 300, UI_PANEL_Y + 84, 80, 24, location_id, focus == 1);
+	drawQueryButton(UI_PANEL_X + 395, UI_PANEL_Y + 84, 65, 26);
+
+	settextstyle(FONT_TABLE_H, FONT_TABLE_W, _T("黑体"));
+	settextcolor(TEXT_MAIN);
+	setfillcolor(BG_TABLE_HDR);
+	x = table_x;
+	for (int c = 0; c < 6; c++) {
+		fillrectangle(x, table_y, x + col_w[c], table_y + header_h);
+		setlinecolor(GRAY_LINE);
+		rectangle(x, table_y, x + col_w[c], table_y + header_h);
+		outtextxy(x + 4, table_y + 5, (char *)headers[c]);
+		x += col_w[c];
+	}
+
+	for (Inventory *p = inventory_list_head; p && shown < 3; p = p->next) {
+		if (!inventory_matches_query_pdf(p, goods_name, location_id)) continue;
+		if (idx++ < start) continue;
+		int y = table_y + header_h + shown * row_h;
+		x = table_x;
+		setfillcolor(WHITE_COLOR);
+		fillrectangle(table_x, y, table_x + total_w, y + row_h);
+		setlinecolor(GRAY_LINE);
+		rectangle(table_x, y, table_x + total_w, y + row_h);
+		settextcolor(TEXT_MAIN);
+
+		sprintf(buf, "%d", p->id);
+		outtextxy(x + 4, y + 5, buf); x += col_w[0];
+		outtextxy(x + 4, y + 5, p->goods_type); x += col_w[1];
+		outtextxy(x + 4, y + 5, p->goods_type); x += col_w[2];
+		sprintf(buf, "%d", p->quantity);
+		outtextxy(x + 4, y + 5, buf); x += col_w[3];
+		outtextxy(x + 4, y + 5, strlen(p->location_id) ? p->location_id : "--"); x += col_w[4];
+		outtextxy(x + 4, y + 5, strlen(p->in_time) ? p->in_time : "--");
+
+		int vx = table_x;
+		for (int c = 0; c < 6; c++) {
+			vx += col_w[c];
+			line(vx, y, vx, y + row_h);
+		}
+		shown++;
+	}
+
+	if (shown == 0) {
+		settextcolor(TEXT_MUTED);
+		outtextxy(table_x + 160, table_y + header_h + 30, "暂无匹配库存");
+	}
+
+	drawPageText(UI_PANEL_Y + 240, inventory_query_total_pages(goods_name, location_id), page);
+}
+
+static void inventoryQueryWinPdf() {
+	char goods_name[64] = {0};
+	char location_id[64] = {0};
+	int focus = 0, page = 0;
+
+	while (1) {
+		int pages = inventory_query_total_pages(goods_name, location_id);
+		if (page >= pages) page = pages - 1;
+		draw_inventory_query_pdf(goods_name, location_id, focus, page);
+		ExMessage msg = getmessage(EX_KEY | EX_CHAR | EX_MOUSE);
+		char *buf = focus == 0 ? goods_name : location_id;
+		int max_len = focus == 0 ? 31 : 15;
+
+		if (msg.message == WM_LBUTTONDOWN) {
+			if (msg.x >= UI_PANEL_X + 105 && msg.x <= UI_PANEL_X + 205 &&
+			    msg.y >= UI_PANEL_Y + 84 && msg.y <= UI_PANEL_Y + 108) focus = 0;
+			else if (msg.x >= UI_PANEL_X + 300 && msg.x <= UI_PANEL_X + 380 &&
+			         msg.y >= UI_PANEL_Y + 84 && msg.y <= UI_PANEL_Y + 108) focus = 1;
+		}
+		else if (msg.message == WM_KEYDOWN) {
+			if (msg.vkcode == VK_ESCAPE) return;
+			if (msg.vkcode == VK_TAB) focus = 1 - focus;
+			if (msg.vkcode == VK_BACK) {
+				int len = (int)strlen(buf);
+				if (len > 0) { buf[len - 1] = '\0'; page = 0; }
+			}
+			if (msg.vkcode == VK_LEFT && page > 0) page--;
+			if (msg.vkcode == VK_RIGHT && page < pages - 1) page++;
+		}
+		else if (msg.message == WM_CHAR) {
+			char ch = (char)msg.ch;
+			if (ch >= 32 && ch <= 126) {
+				int len = (int)strlen(buf);
+				if (len < max_len) {
+					buf[len] = ch;
+					buf[len + 1] = '\0';
+					page = 0;
+				}
+			}
+		}
+	}
+}
+
 /* ========== 出入库记录表格 ========== */
 static void drawInOutRow(const void *record, int row_idx, int y_base,
                          int table_x, const int *col_widths, int ncols) {
@@ -420,6 +778,9 @@ static void inventoryWin();
 static void stocktakingWin();
 
 static void warehouseMgmtWin() {
+	window_clear_frame();
+	window_set_card(1);
+
 	WINDOW_T win = {
 		220, 120, 360, 410, WHITE_COLOR, 6, {
 			{230, 135, 340, 30, "仓储管理",
@@ -463,6 +824,9 @@ static void inboundWin() {
 			free(tmp);
 		}
 	}
+
+	window_clear_frame();
+	window_set_card(1);
 
 	WINDOW_T win = {
 		180, 60, 460, 440, WHITE_COLOR, 11, {
@@ -559,6 +923,9 @@ static void outboundWin() {
 		}
 	}
 
+	window_clear_frame();
+	window_set_card(1);
+
 	WINDOW_T win = {
 		180, 60, 460, 440, WHITE_COLOR, 11, {
 			{190, 70, 440, 30, "出库管理",
@@ -640,15 +1007,14 @@ static void outboundWin() {
 
 /* ========== 库存查询窗口 ========== */
 static void inventoryWin() {
-	if (!inventory_list_head) {
-		MessageBoxA(GetHWnd(), "暂无库存记录", "提示", MB_OK | MB_ICONINFORMATION);
-		return;
-	}
-	showInventoryList(inventory_list_head);
+	inventoryQueryWinPdf();
 }
 
 /* ========== 库存盘点窗口 ========== */
 static void stocktakingWin() {
+	window_clear_frame();
+	window_set_card(1);
+
 	WINDOW_T win = {
 		200, 120, 400, 380, WHITE_COLOR, 9, {
 			{210, 130, 380, 30, "库存盘点",
@@ -726,6 +1092,9 @@ static void stocktakingWin() {
 }
 
 int forgotPasswordWin() {
+	window_clear_frame();
+	window_set_card(1);
+
 	WINDOW_T win = {
 		220, 200, 360, 260, WHITE_COLOR, 5, {
 			{230, 210, 340, 30, "找回密码",
@@ -802,12 +1171,13 @@ int mainWin() {
 	}
 	win.current = 0;
 
+	window_clear_frame();
 	/* 主菜单不使用白卡片（背景图透出） */
 	window_set_card(0);
 
 	while (1) {
 		window_show(win);
-		drawPageHeader("智能物流管理系统 — 主菜单");
+		drawPageHeader("智能物流管理系统主菜单界面");
 		win = window_run(win);
 		int idx = win.current;
 

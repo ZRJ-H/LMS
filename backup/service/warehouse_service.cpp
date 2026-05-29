@@ -26,14 +26,41 @@ static int recover_max_id(const void *head, size_t next_offset,
 int warehouse_svc_init() {
     CreateDirectoryA("data", NULL);
 
-    int w_count = bin_load_list(WAREHOUSE_DAT_FILE,
+    int w_count = txt_load_list(WAREHOUSE_TXT_FILE,
         (void **)&warehouse_list_head, sizeof(Warehouse), offsetof(Warehouse, next));
-    int r_count = bin_load_list(INOUT_RECORD_DAT_FILE,
+    if (w_count <= 0) {
+        w_count = bin_load_list(WAREHOUSE_DAT_FILE,
+            (void **)&warehouse_list_head, sizeof(Warehouse), offsetof(Warehouse, next));
+        if (w_count > 0) txt_save_list(WAREHOUSE_TXT_FILE, warehouse_list_head,
+            sizeof(Warehouse), offsetof(Warehouse, next));
+    }
+
+    int r_count = txt_load_list(INOUT_RECORD_TXT_FILE,
         (void **)&inout_record_list_head, sizeof(InOutRecord), offsetof(InOutRecord, next));
-    int v_count = bin_load_list(INVENTORY_DAT_FILE,
+    if (r_count <= 0) {
+        r_count = bin_load_list(INOUT_RECORD_DAT_FILE,
+            (void **)&inout_record_list_head, sizeof(InOutRecord), offsetof(InOutRecord, next));
+        if (r_count > 0) txt_save_list(INOUT_RECORD_TXT_FILE, inout_record_list_head,
+            sizeof(InOutRecord), offsetof(InOutRecord, next));
+    }
+
+    int v_count = txt_load_list(INVENTORY_TXT_FILE,
         (void **)&inventory_list_head, sizeof(Inventory), offsetof(Inventory, next));
-    int l_count = bin_load_list(LOG_DAT_FILE,
+    if (v_count <= 0) {
+        v_count = bin_load_list(INVENTORY_DAT_FILE,
+            (void **)&inventory_list_head, sizeof(Inventory), offsetof(Inventory, next));
+        if (v_count > 0) txt_save_list(INVENTORY_TXT_FILE, inventory_list_head,
+            sizeof(Inventory), offsetof(Inventory, next));
+    }
+
+    int l_count = txt_load_list(LOG_TXT_FILE,
         (void **)&log_list_head, sizeof(OperationLog), offsetof(OperationLog, next));
+    if (l_count <= 0) {
+        l_count = bin_load_list(LOG_DAT_FILE,
+            (void **)&log_list_head, sizeof(OperationLog), offsetof(OperationLog, next));
+        if (l_count > 0) txt_save_list(LOG_TXT_FILE, log_list_head,
+            sizeof(OperationLog), offsetof(OperationLog, next));
+    }
 
     if (w_count > 0)
         warehouse_id_counter = recover_max_id(warehouse_list_head,
@@ -61,17 +88,20 @@ int warehouse_svc_init() {
         warehouse_svc_save_all();
     }
 
-    return w_count + r_count + v_count + l_count;
+    return (w_count > 0 ? w_count : 0) +
+           (r_count > 0 ? r_count : 0) +
+           (v_count > 0 ? v_count : 0) +
+           (l_count > 0 ? l_count : 0);
 }
 
 void warehouse_svc_save_all() {
-    bin_save_list(WAREHOUSE_DAT_FILE, warehouse_list_head,
+    txt_save_list(WAREHOUSE_TXT_FILE, warehouse_list_head,
         sizeof(Warehouse), offsetof(Warehouse, next));
-    bin_save_list(INOUT_RECORD_DAT_FILE, inout_record_list_head,
+    txt_save_list(INOUT_RECORD_TXT_FILE, inout_record_list_head,
         sizeof(InOutRecord), offsetof(InOutRecord, next));
-    bin_save_list(INVENTORY_DAT_FILE, inventory_list_head,
+    txt_save_list(INVENTORY_TXT_FILE, inventory_list_head,
         sizeof(Inventory), offsetof(Inventory, next));
-    bin_save_list(LOG_DAT_FILE, log_list_head,
+    txt_save_list(LOG_TXT_FILE, log_list_head,
         sizeof(OperationLog), offsetof(OperationLog, next));
 }
 
@@ -157,13 +187,14 @@ int inbound_svc_execute(const char *order_id, int quantity,
     }
 
     Warehouse *wh = warehouse_svc_get_default();
-    Inventory *inv = inventory_svc_find(order->goods_type, wh->id);
+    const char *stock_name = strlen(order->goods_name) ? order->goods_name : order->goods_type;
+    Inventory *inv = inventory_svc_find(stock_name, wh->id);
 
     if (!inv) {
         inv = (Inventory *)malloc(sizeof(Inventory));
         memset(inv, 0, sizeof(Inventory));
         inv->id = ++inventory_id_counter;
-        strcpy(inv->goods_type, order->goods_type);
+        strcpy(inv->goods_type, stock_name);
         inv->warehouse_id = wh->id;
         inv->quantity = 0;
         inv->next = inventory_list_head;
@@ -179,7 +210,7 @@ int inbound_svc_execute(const char *order_id, int quantity,
     memset(rec, 0, sizeof(InOutRecord));
     rec->id = ++inout_record_id_counter;
     strncpy(rec->order_id, order_id, ORDER_ID_LEN - 1);
-    strncpy(rec->goods_type, order->goods_type, GOODS_TYPE_LEN - 1);
+    strncpy(rec->goods_type, stock_name, GOODS_TYPE_LEN - 1);
     rec->quantity = quantity;
     rec->op_type = OP_INBOUND;
     get_current_time_str(rec->op_time);
@@ -190,8 +221,71 @@ int inbound_svc_execute(const char *order_id, int quantity,
 
     /* 操作日志 */
     char action[ACTION_LEN];
-    snprintf(action, sizeof(action), "入库: 订单%s, 货物%s x%d, 货位%s",
-             order_id, order->goods_type, quantity, location_id);
+    snprintf(action, sizeof(action), "入库: 订单%s, 货物%s x%d, 货位%s→待运输",
+             order_id, stock_name, quantity, location_id);
+    log_svc_add(current_user->id, current_user->name, action);
+
+    /* 订单状态流转: 待出库 → 待运输（PDF 图9） */
+    order->status = ORDER_PENDING_TRANSPORT;
+    order_svc_save();
+
+    warehouse_svc_save_all();
+    return 0;
+}
+
+/* ============================================================
+ *  出库（核心逻辑，两个入口复用）
+ * ============================================================ */
+static int outbound_core(const char *order_id, int quantity,
+                         const char *location_id, char *err_msg, int err_len) {
+    Warehouse *wh = warehouse_svc_get_default();
+    const char *stock_name = NULL;
+
+    /* 查找订单以获取货物名称 */
+    Order *order = order_svc_find_by_id(order_id);
+    if (order) {
+        stock_name = strlen(order->goods_name) ? order->goods_name : order->goods_type;
+    } else {
+        snprintf(err_msg, err_len, "订单 %s 不存在", order_id);
+        return -1;
+    }
+
+    Inventory *inv = inventory_svc_find(stock_name, wh->id);
+    if (!inv) {
+        snprintf(err_msg, err_len, "货物类型 %s 暂无库存，请先入库", stock_name);
+        return -3;
+    }
+    if (inv->quantity < quantity) {
+        snprintf(err_msg, err_len, "库存不足：当前库存 %d，需要 %d",
+                 inv->quantity, quantity);
+        return -4;
+    }
+
+    inv->quantity -= quantity;
+    strncpy(inv->location_id, location_id, LOCATION_LEN - 1);
+
+    /* 创建出入库记录 */
+    InOutRecord *rec = (InOutRecord *)malloc(sizeof(InOutRecord));
+    memset(rec, 0, sizeof(InOutRecord));
+    rec->id = ++inout_record_id_counter;
+    strncpy(rec->order_id, order_id, ORDER_ID_LEN - 1);
+    strncpy(rec->goods_type, stock_name, GOODS_TYPE_LEN - 1);
+    rec->quantity = quantity;
+    rec->op_type = OP_OUTBOUND;
+    get_current_time_str(rec->op_time);
+    strncpy(rec->location_id, location_id, LOCATION_LEN - 1);
+    rec->operator_id = current_user->id;
+    rec->next = inout_record_list_head;
+    inout_record_list_head = rec;
+
+    /* 订单状态流转 → 运输中 */
+    order->status = ORDER_IN_TRANSIT;
+    order_svc_save();
+
+    /* 操作日志 */
+    char action[ACTION_LEN];
+    snprintf(action, sizeof(action), "出库: 订单%s, 货物%s x%d→运输中, 货位%s",
+             order_id, stock_name, quantity, location_id);
     log_svc_add(current_user->id, current_user->name, action);
 
     warehouse_svc_save_all();
@@ -199,7 +293,7 @@ int inbound_svc_execute(const char *order_id, int quantity,
 }
 
 /* ============================================================
- *  出库
+ *  出库 — 入口 A: 按订单号（待出库订单直接出库）
  * ============================================================ */
 
 int outbound_svc_execute(const char *order_id, int quantity,
@@ -219,47 +313,41 @@ int outbound_svc_execute(const char *order_id, int quantity,
         return -2;
     }
 
-    Warehouse *wh = warehouse_svc_get_default();
-    Inventory *inv = inventory_svc_find(order->goods_type, wh->id);
+    return outbound_core(order_id, quantity, location_id, err_msg, err_len);
+}
 
-    if (!inv) {
-        snprintf(err_msg, err_len, "货物类型 %s 暂无库存，请先入库",
-                 order->goods_type);
-        return -3;
+/* ============================================================
+ *  出库 — 入口 B: 按调度单号（PDF 图9 "调度指令" 路径）
+ *  查调度单 → 找关联订单 → 校验待运输状态 → 扣库存 → 运输中
+ * ============================================================ */
+int outbound_svc_execute_by_dispatch(const char *dispatch_id, int quantity,
+                                     const char *location_id, char *err_msg, int err_len) {
+    if (quantity <= 0) {
+        snprintf(err_msg, err_len, "出库数量必须大于0");
+        return -5;
     }
-    if (inv->quantity < quantity) {
-        snprintf(err_msg, err_len, "库存不足：当前库存 %d，需要 %d",
-                 inv->quantity, quantity);
-        return -4;
+
+    /* 查找调度单 */
+    Dispatch *dp = dispatch_list_head;
+    while (dp) {
+        if (strcmp(dp->dispatch_id, dispatch_id) == 0) break;
+        dp = dp->next;
+    }
+    if (!dp) {
+        snprintf(err_msg, err_len, "调度单 %s 不存在", dispatch_id);
+        return -1;
     }
 
-    inv->quantity -= quantity;
-    strncpy(inv->location_id, location_id, LOCATION_LEN - 1);
+    /* 查找关联订单 */
+    Order *order = order_svc_find_by_id(dp->order_id);
+    if (!order) {
+        snprintf(err_msg, err_len, "调度单关联的订单 %s 不存在", dp->order_id);
+        return -1;
+    }
+    if (order->status != ORDER_PENDING_TRANSPORT) {
+        snprintf(err_msg, err_len, "订单状态不是待运输，无法按调度出库");
+        return -2;
+    }
 
-    /* 创建出入库记录 */
-    InOutRecord *rec = (InOutRecord *)malloc(sizeof(InOutRecord));
-    memset(rec, 0, sizeof(InOutRecord));
-    rec->id = ++inout_record_id_counter;
-    strncpy(rec->order_id, order_id, ORDER_ID_LEN - 1);
-    strncpy(rec->goods_type, order->goods_type, GOODS_TYPE_LEN - 1);
-    rec->quantity = quantity;
-    rec->op_type = OP_OUTBOUND;
-    get_current_time_str(rec->op_time);
-    strncpy(rec->location_id, location_id, LOCATION_LEN - 1);
-    rec->operator_id = current_user->id;
-    rec->next = inout_record_list_head;
-    inout_record_list_head = rec;
-
-    /* 订单状态流转: 待出库 → 运输中 */
-    order->status = ORDER_IN_TRANSIT;
-    order_svc_save();
-
-    /* 操作日志 */
-    char action[ACTION_LEN];
-    snprintf(action, sizeof(action), "出库: 订单%s, 货物%s x%d→运输中, 货位%s",
-             order_id, order->goods_type, quantity, location_id);
-    log_svc_add(current_user->id, current_user->name, action);
-
-    warehouse_svc_save_all();
-    return 0;
+    return outbound_core(dp->order_id, quantity, location_id, err_msg, err_len);
 }

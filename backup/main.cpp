@@ -10,6 +10,7 @@
 #include "service/user_service.h"
 #include "service/order_service.h"
 #include "service/warehouse_service.h"
+#include "service/transport_service.h"
 
 int main(int argc, char** argv) {
 	CreateDirectoryA("data", NULL);  /* 确保 data/ 目录存在 */
@@ -24,9 +25,10 @@ int main(int argc, char** argv) {
 
 	set_bg_image(&img1);
 	init_order_sequence();
-	user_svc_init();   /* 从文件加载用户 */
-	order_svc_init();     /* 从文件加载订单 */
-	warehouse_svc_init(); /* 从文件加载仓库/库存/出入库记录 */
+	user_svc_init();      /* 从 txt 文件加载用户 */
+	order_svc_init();     /* 从 txt 文件加载订单 */
+	warehouse_svc_init();  /* 从 txt 文件加载仓库/库存/出入库记录 */
+    transport_svc_init(); /* 从 txt 文件加载车辆/司机/线路/调度/轨迹 */
 
 	/* 函数指针跳转表：索引即窗口ID */
 	int (*func[10])() = {startWin, loginWin, mainWin, forgotPasswordWin};

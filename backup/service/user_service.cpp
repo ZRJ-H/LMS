@@ -5,14 +5,51 @@
 #include <time.h>
 #include <stddef.h>
 
+static User *ensure_builtin_user(const char *name, const char *pwd, UserRole role) {
+	User *u = find_user_by_name(name);
+	char hash[33];
+	md5_hash(pwd, hash);
+
+	if (!u) {
+		u = (User *)malloc(sizeof(User));
+		if (!u) return NULL;
+		memset(u, 0, sizeof(User));
+		u->id = ++user_id_counter;
+		strncpy(u->name, name, NAME_LEN - 1);
+		u->name[NAME_LEN - 1] = '\0';
+		u->next = user_list_head;
+		user_list_head = u;
+	}
+
+	u->role = role;
+	strcpy(u->password, hash);
+	u->failed_attempts = 0;
+	u->lockout_until = 0;
+	return u;
+}
+
+static void ensure_demo_users() {
+	ensure_builtin_user("admin", "admin123", ROLE_ADMIN);
+	ensure_builtin_user("service", "123456", ROLE_SERVICE);
+	ensure_builtin_user("warehouse", "123456", ROLE_WAREHOUSE);
+	ensure_builtin_user("dispatcher", "123456", ROLE_DISPATCHER);
+	ensure_builtin_user("user1", "123456", ROLE_CUSTOMER);
+	ensure_builtin_user("user2", "123456", ROLE_CUSTOMER);
+	ensure_builtin_user("user3", "123456", ROLE_CUSTOMER);
+}
+
 /* ============================================================
- *  初始化：优先从 data/users.dat 加载
- *  失败 → 调 init_sample_users() → 落盘
+ *  初始化：优先从 data/users.txt 加载
+ *  失败时尝试从旧 data/users.dat 迁移，再失败则初始化示例用户并落盘
  *  加载后清理已过期的 lockout，并恢复 user_id_counter
  * ============================================================ */
 int user_svc_init() {
 	/* 尝试加载 */
-	int count = bin_load_list(USER_DAT_FILE, (void **)&user_list_head, sizeof(User), offsetof(User, next));//介绍这些二进制文件的函数，告诉我它们是干什么的，参数是什么，返回值是什么 --- IGNORE ---
+	int count = txt_load_list(USER_TXT_FILE, (void **)&user_list_head, sizeof(User), offsetof(User, next));
+	if (count <= 0) {
+		count = bin_load_list(USER_DAT_FILE, (void **)&user_list_head, sizeof(User), offsetof(User, next));
+		if (count > 0) txt_save_list(USER_TXT_FILE, user_list_head, sizeof(User), offsetof(User, next));
+	}
 	if (count > 0) {
 		/* 清理过期锁定 + 恢复 ID 计数器 */
 		User *p = user_list_head;
@@ -27,18 +64,21 @@ int user_svc_init() {
 			p = p->next;
 		}
 		if (max_id >= user_id_counter) user_id_counter = max_id;
+		ensure_demo_users();
+		user_svc_save();
 		return count;
 	}
 
 	/* 无文件 → 初始化示例用户并保存 */
 	init_sample_users();
+	ensure_demo_users();
 	user_svc_save();
 	return user_id_counter; /* 返回创建的用户数 */
 }
 
 /* 持久化 */
 int user_svc_save() {
-	return bin_save_list(USER_DAT_FILE, user_list_head, sizeof(User), offsetof(User, next));
+	return txt_save_list(USER_TXT_FILE, user_list_head, sizeof(User), offsetof(User, next));
 }
 
 /* 认证 */

@@ -14,9 +14,14 @@ static void seed_order(const char *cust_name, OrderStatus status,
 	o->user_id = u ? u->id : 0;
 	strncpy(o->customer_name, cust_name, NAME_LEN - 1);
 	strncpy(o->customer_phone, "13800000000", PHONE_LEN - 1);
+	strncpy(o->customer_addr, from, ADDR_LEN - 1);
 	strncpy(o->from_addr, from, ADDR_LEN - 1);
 	strncpy(o->to_addr, to, ADDR_LEN - 1);
+	strncpy(o->goods_name, goods, NAME_LEN - 1);
 	strcpy(o->goods_type, goods);
+	strcpy(o->goods_weight, "1kg");
+	o->goods_quantity = 1;
+	strcpy(o->goods_volume, "1m3");
 	strcpy(o->expected_delivery_time, "2026-05-25 18:00");
 	o->status = status;
 	o->next = order_list_head;
@@ -24,7 +29,11 @@ static void seed_order(const char *cust_name, OrderStatus status,
 }
 
 int order_svc_init() {
-	int count = bin_load_list(ORDER_DAT_FILE, (void **)&order_list_head, sizeof(Order), offsetof(Order, next));
+	int count = txt_load_list(ORDER_TXT_FILE, (void **)&order_list_head, sizeof(Order), offsetof(Order, next));
+	if (count <= 0) {
+		count = bin_load_list(ORDER_DAT_FILE, (void **)&order_list_head, sizeof(Order), offsetof(Order, next));
+		if (count > 0) txt_save_list(ORDER_TXT_FILE, order_list_head, sizeof(Order), offsetof(Order, next));
+	}
 	if (count > 0) {
 		/* 从已有订单中恢复 order_sequence 的最大当日序号 */
 		char today[16];
@@ -56,7 +65,7 @@ int order_svc_init() {
 }
 
 int order_svc_save() {
-	return bin_save_list(ORDER_DAT_FILE, order_list_head, sizeof(Order), offsetof(Order, next));
+	return txt_save_list(ORDER_TXT_FILE, order_list_head, sizeof(Order), offsetof(Order, next));
 }
 
 Order *order_svc_find_by_id(const char *order_id) {
@@ -108,4 +117,36 @@ Order *order_svc_list_all() {
 
 int order_svc_count() {
 	return list_count(order_list_head, offsetof(Order, next));
+}
+
+int order_svc_update(const char *order_id, const Order *new_data) {
+	Order *o = order_svc_find_by_id(order_id);
+	if (!o) return -1;
+	if (o->status != ORDER_PENDING_REVIEW) return -2;
+
+	/* 仅覆盖可编辑字段，保留 order_id / user_id / status / reject_reason */
+	strncpy(o->customer_name,           new_data->customer_name,           NAME_LEN - 1);
+	strncpy(o->customer_phone,          new_data->customer_phone,          PHONE_LEN - 1);
+	strncpy(o->customer_addr,           new_data->customer_addr,           ADDR_LEN - 1);
+	strncpy(o->from_addr,               new_data->from_addr,               ADDR_LEN - 1);
+	strncpy(o->to_addr,                 new_data->to_addr,                 ADDR_LEN - 1);
+	strncpy(o->goods_name,              new_data->goods_name,              NAME_LEN - 1);
+	strncpy(o->goods_type,              new_data->goods_type,              GOODS_TYPE_LEN - 1);
+	strncpy(o->goods_weight,            new_data->goods_weight,            sizeof(o->goods_weight) - 1);
+	o->goods_quantity = new_data->goods_quantity;
+	strncpy(o->goods_volume,            new_data->goods_volume,            sizeof(o->goods_volume) - 1);
+	strncpy(o->expected_delivery_time,  new_data->expected_delivery_time,  sizeof(o->expected_delivery_time) - 1);
+
+	order_svc_save();
+	return 0;
+}
+
+int order_svc_complete(const char *order_id) {
+	Order *o = order_svc_find_by_id(order_id);
+	if (!o) return -1;
+	if (o->status != ORDER_DELIVERED) return -2;
+
+	o->status = ORDER_COMPLETED;
+	order_svc_save();
+	return 0;
 }

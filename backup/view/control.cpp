@@ -12,8 +12,43 @@ void redraw_bg() { if (g_bg) putimage(0, 0, g_bg); }
 
 /* ---- 白卡片模式 ---- */
 static int g_use_card = 1;  /* 默认子界面使用卡片 */
+static int g_frame_x = 0, g_frame_y = 0, g_frame_w = 0, g_frame_h = 0;
 
 void window_set_card(int on) { g_use_card = on; }
+
+void window_set_frame(int x, int y, int w, int h) {
+	g_frame_x = x; g_frame_y = y; g_frame_w = w; g_frame_h = h;
+}
+
+void window_clear_frame() {
+	g_frame_x = 0; g_frame_y = 0; g_frame_w = 0; g_frame_h = 0;
+}
+
+void ui_draw_panel() {
+	setfillcolor(WHITE_COLOR);
+	fillrectangle(UI_PANEL_X, UI_PANEL_Y,
+	              UI_PANEL_X + UI_PANEL_W, UI_PANEL_Y + UI_PANEL_H);
+	setlinecolor(FRAME_BLUE);
+	rectangle(UI_PANEL_X, UI_PANEL_Y,
+	          UI_PANEL_X + UI_PANEL_W, UI_PANEL_Y + UI_PANEL_H);
+}
+
+void ui_draw_title(const char *title) {
+	settextstyle(FONT_HEADER_H + 4, 0, _T("黑体"));
+	settextcolor(TEXT_MAIN);
+	int tx = UI_PANEL_X + (UI_PANEL_W - textwidth(title)) / 2;
+	outtextxy(tx, UI_TITLE_Y, title);
+}
+
+void ui_draw_meta(const char *left, const char *right) {
+	settextstyle(FONT_SMALL_H, FONT_SMALL_W, _T("黑体"));
+	settextcolor(TEXT_MAIN);
+	if (left) outtextxy(UI_PANEL_X + 35, UI_META_Y, left);
+	if (right) {
+		int rx = UI_PANEL_X + UI_PANEL_W - 35 - textwidth(right);
+		outtextxy(rx, UI_META_Y, right);
+	}
+}
 
 /* 手动实现圆角矩形填充 — 兼容旧版 EasyX（无 fillroundrect） */
 void drawWhiteCard() {
@@ -41,6 +76,12 @@ static int text_center_y(int y1, int y2, const char *text) {
  *  控件显示 — 输入框规范：激活白底+PRIMARY边框，未激活浅灰底+灰边框
  * ============================================================ */
 void control_show(CONTROL_T ctrl) {
+	if (ctrl.type == LABEL && ctrl.x == UI_PANEL_X &&
+	    ctrl.width >= 300 && ctrl.y < UI_PANEL_Y + 55) {
+		ui_draw_title(ctrl.text);
+		return;
+	}
+
 	COLORREF fill = (ctrl.state == 1) ? ctrl.bgColor1 : ctrl.bgColor2;
 	COLORREF txt  = (ctrl.state == 1) ? ctrl.textColor :
 	                (ctrl.textColor2 ? ctrl.textColor2 : ctrl.textColor);
@@ -120,11 +161,21 @@ WINDOW_T window_show(WINDOW_T win) {
 	cleardevice();
 	redraw_bg();
 
-	if (g_use_card) {
-		drawWhiteCard();
+	if (g_frame_w > 0 && (win.x != g_frame_x || win.y != g_frame_y ||
+	    win.width != g_frame_w || win.height != g_frame_h)) {
+		window_clear_frame();
+	}
+
+	if (g_frame_w > 0 && g_frame_h > 0) {
+		/* 白底浅蓝边框 — PDF 原始风格 */
+		setfillcolor(WHITE_COLOR);
+		fillrectangle(g_frame_x, g_frame_y, g_frame_x + g_frame_w, g_frame_y + g_frame_h);
+		setlinecolor(FRAME_BLUE);
+		rectangle(g_frame_x, g_frame_y, g_frame_x + g_frame_w, g_frame_y + g_frame_h);
+	} else if (g_use_card) {
+		ui_draw_panel();
 	} else {
-		setfillcolor(win.bgColor);
-		fillrectangle(win.x, win.y, win.x + win.width, win.y + win.height);
+		ui_draw_panel();
 	}
 
 	for (int i = 0; i < win.count; i++) {
@@ -192,6 +243,10 @@ WINDOW_T window_run(WINDOW_T win) {
 
 		/* ---- 键盘事件 ---- */
 		if (msg.message == WM_KEYDOWN) {
+			if (msg.vkcode == VK_ESCAPE) {
+				win.current = -1;
+				return win;
+			}
 			if (msg.vkcode == VK_RETURN) {
 				if (win.controls[i].type == BUTTON) {
 					win.current = i;
@@ -319,7 +374,7 @@ int window_show_table(const char *title,
 	if (total == 0) {
 		cleardevice();
 		redraw_bg();
-		drawWhiteCard();
+		ui_draw_panel();
 		settextstyle(FONT_HEADER_H, FONT_HEADER_W, _T("黑体"));
 		settextcolor(TEXT_MUTED);
 		int cx = text_center_x(0, WIN_W, "暂无数据，按任意键返回...");
@@ -337,9 +392,31 @@ int window_show_table(const char *title,
 	}
 
 	/* 表格几何 — 内容在卡片内 */
+	int local_widths[10];
 	int total_w = 0;
-	for (int c = 0; c < ncols; c++) total_w += col_widths[c];
-	int table_x = TABLE_LEFT + (CARD_X2 - CARD_X1 - total_w) / 2;  /* 卡片内居中 */
+	for (int c = 0; c < ncols; c++) {
+		local_widths[c] = col_widths[c];
+		total_w += local_widths[c];
+	}
+	if (total_w > UI_PANEL_W - 36 && ncols > 0) {
+		int target_w = UI_PANEL_W - 36;
+		int scaled_w = 0;
+		for (int c = 0; c < ncols; c++) {
+			local_widths[c] = local_widths[c] * target_w / total_w;
+			if (local_widths[c] < 45) local_widths[c] = 45;
+			scaled_w += local_widths[c];
+		}
+		while (scaled_w > target_w) {
+			for (int c = ncols - 1; c >= 0 && scaled_w > target_w; c--) {
+				if (local_widths[c] > 45) {
+					local_widths[c]--;
+					scaled_w--;
+				}
+			}
+		}
+		total_w = scaled_w;
+	}
+	int table_x = UI_PANEL_X + (UI_PANEL_W - total_w) / 2;
 	int table_y = TABLE_TOP;
 	int header_h = TABLE_HDR_H;
 	int row_h = ROW_H;
@@ -351,29 +428,29 @@ int window_show_table(const char *title,
 	while (1) {
 		cleardevice();
 		redraw_bg();
-		drawWhiteCard();
+		ui_draw_panel();
 
 		/* 标题栏 */
 		settextstyle(FONT_HEADER_H, FONT_HEADER_W, _T("黑体"));
 		char title_buf[256];
 		sprintf(title_buf, "%s  第 %d/%d 页  共 %d 条", title, cur_page + 1, pages, total);
 		settextcolor(TEXT_MAIN);
-		int title_cx = text_center_x(CARD_X1, CARD_X2, title_buf);
+		int title_cx = text_center_x(UI_PANEL_X, UI_PANEL_X + UI_PANEL_W, title_buf);
 		outtextxy(title_cx, table_y - header_h, title_buf);
 
 		/* ---- 表头：40px 高，BG_TABLE_HDR 底色 ---- */
 		setfillcolor(BG_TABLE_HDR);
 		int x = table_x;
 		for (int c = 0; c < ncols; c++) {
-			fillrectangle(x, table_y, x + col_widths[c], table_y + header_h);
+			fillrectangle(x, table_y, x + local_widths[c], table_y + header_h);
 			setlinecolor(GRAY_LINE);
-			rectangle(x, table_y, x + col_widths[c], table_y + header_h);
+			rectangle(x, table_y, x + local_widths[c], table_y + header_h);
 			settextcolor(TEXT_MAIN);
 			settextstyle(FONT_TABLE_H, FONT_TABLE_W, _T("黑体"));
-			int cx = text_center_x(x, x + col_widths[c], headers[c]);
+			int cx = text_center_x(x, x + local_widths[c], headers[c]);
 			int cy = text_center_y(table_y, table_y + header_h, headers[c]);
 			outtextxy(cx, cy, (char *)headers[c]);
-			x += col_widths[c];
+			x += local_widths[c];
 		}
 
 		/* ---- 数据行：35px，网格线完整 ---- */
@@ -390,13 +467,13 @@ int window_show_table(const char *title,
 			}
 
 			/* 绘制行数据 */
-			draw_row(records[r], r, ry, table_x, col_widths, ncols);
+			draw_row(records[r], r, ry, table_x, local_widths, ncols);
 
 			/* 列间竖线 */
 			setlinecolor(GRAY_LINE);
 			int vx = table_x;
 			for (int c = 0; c < ncols; c++) {
-				vx += col_widths[c];
+				vx += local_widths[c];
 				line(vx, ry, vx, ry + row_h);
 			}
 			/* 行底横线 */

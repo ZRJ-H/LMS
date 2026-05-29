@@ -1,16 +1,16 @@
 #include <graphics.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <windows.h>
 #include "loginWin.h"
 #include "../public/common.h"
 #include "../public/ui_config.h"
 #include "../service/user_service.h"
 
-/* ---- 校验：长度 6-10 位且全部为数字/字母 ---- */
-static int is_valid_input(const char *s) {
+static int is_valid_chars(const char *s) {
 	int len = (int)strlen(s);
-	if (len < 4 || len > 16) return 0;
+	if (len < 1 || len > 16) return 0;
 	for (int i = 0; i < len; i++) {
 		char ch = s[i];
 		if (!((ch >= '0' && ch <= '9') ||
@@ -22,91 +22,89 @@ static int is_valid_input(const char *s) {
 }
 
 int loginWin() {
+	const int panel_x = 170;
+	const int panel_y = 165;
+	const int panel_w = 460;
+	const int panel_h = 320;
+	const int label_x = panel_x + 55;
+	const int input_x = panel_x + 125;
+	const int input_w = 250;
+	const int btn_w = 115;
+
+	window_clear_frame();
+	window_set_card(0);
+	window_set_frame(panel_x, panel_y, panel_w, panel_h);
+
+	char date_str[32];
+	time_t date_now = time(NULL);
+	strftime(date_str, sizeof(date_str), "%Y-%m-%d", localtime(&date_now));
+
 	WINDOW_T win = {
-		190, 190, 440, 260, WHITE_COLOR, 6, {
-			/* 0: 账号标签 */
-			{(int)LOGIN_LABEL_X, 225, 60, INPUT_H, "账号:",
+		panel_x, panel_y, panel_w, panel_h, WHITE_COLOR, 10, {
+			{panel_x + 70, panel_y + 38, 320, 30, "智能物流管理系统登录界面",
 			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
-			/* 1: 账号输入框（初始焦点） */
-			{(int)LOGIN_USER_X, (int)LOGIN_USER_Y, (int)INPUT_W, (int)INPUT_H, "",
+			{panel_x + 178, panel_y + 86, 140, 24, "",
+			 WHITE_COLOR, WHITE_COLOR, TEXT_MUTED, LABEL, 0, 0, 0, 0},
+			{label_x, panel_y + 145, 55, 30, "账号:",
+			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+			{input_x, panel_y + 138, input_w, 30, "",
 			 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 1, 0, 0, 0},
-			/* 2: 密码标签 */
-			{(int)LOGIN_LABEL_X, 285, 60, INPUT_H, "密码:",
+			{label_x, panel_y + 195, 55, 30, "密码:",
 			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
-			/* 3: 密码输入框（掩码，右侧有显隐切换方块） */
-			{(int)LOGIN_PWD_X, (int)LOGIN_PWD_Y, (int)INPUT_W, (int)INPUT_H, "",
+			{input_x, panel_y + 188, input_w, 30, "",
 			 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT_PWD, 0, 0, 0, 0},
-			/* 4: 登录按钮 */
-			{280, (int)LOGIN_BTN_Y, (int)BTN_W, (int)BTN_H, "登  录",
+			{panel_x + 75, panel_y + 255, btn_w, 35, "登  录",
 			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
-			/* 5: 返回按钮 */
-			{460, (int)LOGIN_BTN_Y, (int)BTN_W, (int)BTN_H, "返  回",
+			{panel_x + 270, panel_y + 255, btn_w, 35, "返  回",
 			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
+			{panel_x + 10, panel_y + 10, 1, 1, "",
+			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+			{panel_x + 10, panel_y + 10, 1, 1, "",
+			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
 		}
 	};
+	strcpy(win.controls[1].text, date_str);
 
 	while (1) {
 		window_show(win);
-
-		/* 大标题 — 绘于窗口之上 */
-		settextstyle(FONT_TITLE_H, 0, _T("黑体"));
-		settextcolor(TEXT_MAIN);
-		const char *title = "智能物流管理系统";
-		int tx = (WIN_W - textwidth(title)) / 2;
-		outtextxy(tx, LOGIN_TITLE_Y, title);
-
 		win = window_run(win);
+		if (win.current == 6) {
+			char *username = win.controls[3].text;
+			char *password = win.controls[5].text;
 
-		if (win.current == 4) {
-			/* 登录按钮 */
-			char *username = win.controls[1].text;
-			char *password = win.controls[3].text;
-
-			/* 空值检查 */
 			if (strlen(username) == 0 || strlen(password) == 0) {
-				MessageBoxA(GetHWnd(),
-				            "账号或密码不能为空",
-				            "提示", MB_OK | MB_ICONWARNING);
-				win.controls[3].text[0] = '\0';
-				for (int j = 0; j < win.count; j++)
-					win.controls[j].state = (j == 3) ? 1 : 0;
-				win.current = 3;
+				MessageBoxA(GetHWnd(), "账号或密码不能为空", "提示", MB_OK | MB_ICONWARNING);
+				win.controls[5].text[0] = '\0';
+				win.current = 5;
+				continue;
+			}
+			if (!is_valid_chars(username)) {
+				MessageBoxA(GetHWnd(), "账号只能包含字母或数字", "提示", MB_OK | MB_ICONWARNING);
+				win.controls[5].text[0] = '\0';
+				win.current = 5;
+				continue;
+			}
+			if ((int)strlen(password) < 6 || !is_valid_chars(password)) {
+				MessageBoxA(GetHWnd(), "密码需为 6-16 位字母或数字", "提示", MB_OK | MB_ICONWARNING);
+				win.controls[5].text[0] = '\0';
+				win.current = 5;
 				continue;
 			}
 
-			/* 格式检查：6-10 位字母数字 */
-			if (!is_valid_input(username) || !is_valid_input(password)) {
-				MessageBoxA(GetHWnd(),
-				            "账号或密码格式不正确（需4-16位字母或数字）",
-				            "提示", MB_OK | MB_ICONWARNING);
-				win.controls[3].text[0] = '\0';
-				for (int j = 0; j < win.count; j++)
-					win.controls[j].state = (j == 3) ? 1 : 0;
-				win.current = 3;
-				continue;
-			}
-
-			/* 调用服务层认证 */
 			char err_msg[128] = {0};
 			User *u = user_svc_auth(username, password, err_msg, sizeof(err_msg));
 			if (!u) {
 				MessageBoxA(GetHWnd(), err_msg, "提示", MB_OK | MB_ICONWARNING);
-				win.controls[3].text[0] = '\0';
-				for (int j = 0; j < win.count; j++)
-					win.controls[j].state = (j == 3) ? 1 : 0;
-				win.current = 3;
+				win.controls[5].text[0] = '\0';
+				win.current = 5;
 				continue;
 			}
 
-			/* 登录成功 */
 			current_user = u;
 			time_t now = time(NULL);
-			strftime(login_time_str, sizeof(login_time_str),
-			         "%Y-%m-%d %H:%M", localtime(&now));
-			return 2;  /* → mainWin */
+			strftime(login_time_str, sizeof(login_time_str), "%Y-%m-%d %H:%M", localtime(&now));
+			return 2;
 		}
-		else if (win.current == 5) {
-			return 0;  /* 返回 → startWin */
-		}
+		if (win.current == 7) return 0;
 	}
 }

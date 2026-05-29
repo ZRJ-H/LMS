@@ -12,6 +12,7 @@ TARGET    = output/LMS.exe
 
 # 显式列出每个子目录的源文件（新增子目录时在这里加一行即可）
 SRCS = $(wildcard *.cpp)         \
+       $(wildcard public/*.c)     \
        $(wildcard public/*.cpp)   \
        $(wildcard service/*.cpp)  \
        $(wildcard view/*.cpp)     \
@@ -19,7 +20,7 @@ SRCS = $(wildcard *.cpp)         \
 # 排除测试文件
 SRCS := $(filter-out test_%, $(SRCS))
 
-CXXFLAGS = -finput-charset=UTF-8 -fexec-charset=GBK -O2 -Wall
+CXXFLAGS = -finput-charset=UTF-8 -fexec-charset=GBK -O2 -Wall -pipe
 INCS     = -I. -Ipublic -Iservice -Iview -Iapp -I$(EASYX_INC)
 LIBS     = -L$(EASYX_LIB) -leasyx -static-libgcc -static-libstdc++
 
@@ -27,9 +28,16 @@ LIBS     = -L$(EASYX_LIB) -leasyx -static-libgcc -static-libstdc++
 
 all: $(TARGET)
 
+# 分两步编译：先 -c 为 .o，再链接
+# 链接阶段需要 Windows 可用临时目录 → 设置为当前 output 目录
 $(TARGET): $(SRCS)
 	@mkdir -p output
-	$(CXX) $(CXXFLAGS) $(INCS) $^ -o $@ $(LIBS)
+	@for f in $^; do \
+		bn=$$(basename "$$f"); \
+		obj="output/$${bn%.*}.o"; \
+		$(CXX) $(CXXFLAGS) $(INCS) -c "$$f" -o "$$obj" || exit 1; \
+	done
+	cd output && TMP=$$(pwd) TEMP=$$(pwd) $(CXX) $(CXXFLAGS) *.o -o $$(basename $@) $(LIBS)
 	@echo [OK] $(TARGET)
 
 run: $(TARGET)

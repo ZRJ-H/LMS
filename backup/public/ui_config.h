@@ -20,6 +20,7 @@ const COLORREF WHITE_COLOR  = RGB(255, 255, 255); /* 纯白 — 卡片背景、�
 const COLORREF BG_TABLE_HDR = RGB(230, 235, 240); /* 表头浅灰底色 */
 const COLORREF BG_WINDOW    = RGB(255, 255, 255); /* 窗口默认底色 */
 const COLORREF BORDER_COLOR = RGB(30, 144, 255);  /* 边框主色（蓝） */
+const COLORREF FRAME_BLUE   = RGB(66, 150, 230);  /* 页面主框浅蓝边框 — PDF 风格 */
 const COLORREF BLACK_COLOR  = RGB(0, 0, 0);       /* 纯黑 — 默认边框 */
 const COLORREF RED_BTN      = RGB(220, 53, 69);   /* 危险按钮（驳回/删除）选中 */
 const COLORREF LIGHT_RED    = RGB(248, 215, 218); /* 危险按钮未选中底色 */
@@ -36,6 +37,17 @@ const int CARD_Y1 = 60;
 const int CARD_X2 = 720;
 const int CARD_Y2 = 540;
 const int CARD_R  = 15;  /* 圆角半径 */
+
+/* ---- Unified application panel ---- */
+const int UI_PANEL_X = 180;
+const int UI_PANEL_Y = 60;
+const int UI_PANEL_W = 440;
+const int UI_PANEL_H = 480;
+const int UI_TITLE_Y = UI_PANEL_Y + 28;
+const int UI_META_Y  = UI_PANEL_Y + 68;
+const int UI_FORM_LABEL_X = UI_PANEL_X + 55;
+const int UI_FORM_INPUT_X = UI_PANEL_X + 155;
+const int UI_FORM_INPUT_W = 300;
 
 /* ---- 通用组件标准尺寸 ---- */
 const int BTN_W = 160;
@@ -57,20 +69,20 @@ const int LOGIN_PWD_TOGGLE_Y = 280;
 const int LOGIN_PWD_TOGGLE_SZ = 35;
 
 /* ---- 主菜单网格 ---- */
-const int MENU_COL_LEFT  = 200;
+const int MENU_COL_LEFT  = 220;
 const int MENU_COL_RIGHT = 420;
-const int MENU_W = 180;
-const int MENU_H = 45;
-const int MENU_ROWS_Y[4] = {180, 245, 310, 375};
+const int MENU_W = 160;
+const int MENU_H = 35;
+const int MENU_ROWS_Y[4] = {225, 270, 315, 360};
 
 /* ---- 通用数据查询与列表（表格型）---- */
-const int TABLE_LEFT   = 80;
-const int TABLE_RIGHT  = 720;
-const int TABLE_TOP    = 170;
-const int TABLE_BOTTOM = 480;
-const int ROW_H        = 35;
-const int TABLE_HDR_H  = 40;    /* 表头高度 */
-const int PAGE_SIZE    = 7;
+const int TABLE_LEFT   = 210;
+const int TABLE_RIGHT  = 590;
+const int TABLE_TOP    = 190;
+const int TABLE_BOTTOM = UI_PANEL_Y + UI_PANEL_H - 50;
+const int ROW_H        = 24;
+const int TABLE_HDR_H  = 26;    /* 表头高度 */
+const int PAGE_SIZE    = 5;
 
 /* 搜索栏（卡片内坐标） */
 const int SEARCH_INPUT_X = 150;
@@ -81,14 +93,14 @@ const int SEARCH_BTN_W   = 100;
 const int SEARCH_INPUT_W = 300;
 
 /* 分页按钮热区 */
-const int PAGE_LEFT_X1  = 200;
-const int PAGE_LEFT_Y1  = 510;
-const int PAGE_LEFT_X2  = 260;
-const int PAGE_LEFT_Y2  = 540;
-const int PAGE_RIGHT_X1 = 540;
-const int PAGE_RIGHT_Y1 = 510;
-const int PAGE_RIGHT_X2 = 600;
-const int PAGE_RIGHT_Y2 = 540;
+const int PAGE_LEFT_X1  = UI_PANEL_X + 125;
+const int PAGE_LEFT_Y1  = UI_PANEL_Y + UI_PANEL_H - 36;
+const int PAGE_LEFT_X2  = UI_PANEL_X + 195;
+const int PAGE_LEFT_Y2  = UI_PANEL_Y + UI_PANEL_H - 8;
+const int PAGE_RIGHT_X1 = UI_PANEL_X + UI_PANEL_W - 195;
+const int PAGE_RIGHT_Y1 = UI_PANEL_Y + UI_PANEL_H - 36;
+const int PAGE_RIGHT_X2 = UI_PANEL_X + UI_PANEL_W - 125;
+const int PAGE_RIGHT_Y2 = UI_PANEL_Y + UI_PANEL_H - 8;
 
 /* ---- 字体规格 ---- */
 const int FONT_TITLE_H  = 32;
