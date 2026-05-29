@@ -9,6 +9,7 @@
 #include "../view/control.h"
 #include "../service/order_service.h"
 #include "../service/transport_service.h"
+#include "../service/warehouse_service.h"
 
 /* ---- Pdf 绘制辅助函数 ---- */
 static void drawQueryFrame(const char *title, int panel_h) {
@@ -455,7 +456,22 @@ back_to_list:;
 							continue;
 						}
 
-						int ret = tracking_svc_add(did, new_status, reason);
+						if (new_status == DISPATCH_DEPARTED) {
+								/* 发车前先扣库存、写 OP_OUTBOUND */
+								Order *order = order_svc_find_by_id(dd->order_id);
+								if (order) {
+									char err[256];
+									int oret = outbound_svc_execute_by_dispatch(
+										did, order->goods_quantity, "--", err, sizeof(err));
+									if (oret != 0) {
+										MessageBoxA(GetHWnd(), err,
+										            "出库失败", MB_OK | MB_ICONERROR);
+										continue;
+									}
+								}
+							}
+
+							int ret = tracking_svc_add(did, new_status, reason);
 						if (ret == 0) {
 							char msg[256];
 							sprintf(msg, "调度单 %s 状态更新为: %s",
