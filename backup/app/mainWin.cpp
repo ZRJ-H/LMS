@@ -1,4 +1,4 @@
-#include <graphics.h>
+﻿#include <graphics.h>
 #include <conio.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -428,17 +428,13 @@ static void sysAdminWin() {
 	}
 }
 
-/* ========== 订单管理子窗口 ========== */
-static void orderModifyStubWin() {
-	MessageBoxA(GetHWnd(), "订单修改（扩展功能）", "提示", MB_OK);
-}
 
 static void orderMgmtWinPdf() {
 	MenuItem om[6] = {
 		{"1. 创建订单", 0, (void(*)())createOrderWin, 0},
 		{"2. 订单审核", 0, (void(*)())auditOrderWin, 0},
 		{"3. 订单查询", 0, (void(*)())searchOrderWin, 0},
-		{"4. 订单修改", 0, (void(*)())orderModifyStubWin, 0},
+		{"4. 订单修改", 0, (void(*)())modifyOrderWin, 0},
 		{"5. 订单跟踪", 0, (void(*)())trackOrderWin, 0},
 		{"6. 返回上级", 0, NULL, 0},
 	};

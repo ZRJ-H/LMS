@@ -326,23 +326,15 @@ static void draw_order_query_pdf(const char *order_id, const char *cust_name,
 static void searchOrderWinPdf() {
 	char order_id[64] = {0};
 	char cust_name[64] = {0};
-	char query_order_id[64] = {0};
-	char query_cust_name[64] = {0};
 	int focus = 0, page = 0;
 	const int oid_x = UI_PANEL_X + 82, oid_y = UI_PANEL_Y + 84, oid_w = 120, oid_h = 24;
 	const int name_x = UI_PANEL_X + 290, name_y = UI_PANEL_Y + 84, name_w = 78, name_h = 24;
 	const int query_x = UI_PANEL_X + 378, query_y = UI_PANEL_Y + 84, query_w = 52, query_h = 26;
-	int need_redraw = 1;
 
 	while (1) {
-		int pages = order_query_total_pages(query_order_id, query_cust_name);
+		int pages = order_query_total_pages(order_id, cust_name);
 		if (page >= pages) page = pages - 1;
-		if (need_redraw) {
-			draw_order_query_pdf(query_order_id, query_cust_name, focus, page);
-			drawTextBox(oid_x, oid_y, oid_w, oid_h, order_id, focus == 0);
-			drawTextBox(name_x, name_y, name_w, name_h, cust_name, focus == 1);
-			need_redraw = 0;
-		}
+		draw_order_query_pdf(order_id, cust_name, focus, page);
 		ExMessage msg = getmessage(EX_KEY | EX_CHAR | EX_MOUSE);
 		char *buf = focus == 0 ? order_id : cust_name;
 		int max_len = focus == 0 ? 23 : 31;
@@ -350,46 +342,31 @@ static void searchOrderWinPdf() {
 		if (msg.message == WM_LBUTTONDOWN) {
 			if (inRect(msg.x, msg.y, oid_x, oid_y, oid_w, oid_h)) {
 				focus = 0;
-				drawTextBox(oid_x, oid_y, oid_w, oid_h, order_id, 1);
-				drawTextBox(name_x, name_y, name_w, name_h, cust_name, 0);
 			}
 			else if (inRect(msg.x, msg.y, name_x, name_y, name_w, name_h)) {
 				focus = 1;
-				drawTextBox(oid_x, oid_y, oid_w, oid_h, order_id, 0);
-				drawTextBox(name_x, name_y, name_w, name_h, cust_name, 1);
 			}
 			else if (inRect(msg.x, msg.y, query_x, query_y, query_w, query_h)) {
-				strcpy(query_order_id, order_id);
-				strcpy(query_cust_name, cust_name);
 				page = 0;
-				need_redraw = 1;
 			}
 		}
 		else if (msg.message == WM_KEYDOWN) {
 			if (msg.vkcode == VK_ESCAPE) return;
 			if (msg.vkcode == VK_TAB || msg.vkcode == VK_UP || msg.vkcode == VK_DOWN) {
 				focus = 1 - focus;
-				drawTextBox(oid_x, oid_y, oid_w, oid_h, order_id, focus == 0);
-				drawTextBox(name_x, name_y, name_w, name_h, cust_name, focus == 1);
 			}
 			if (msg.vkcode == VK_BACK) {
 				int len = (int)strlen(buf);
 				if (len > 0) {
 					buf[len - 1] = '\0';
-					drawTextBox(focus == 0 ? oid_x : name_x,
-					            focus == 0 ? oid_y : name_y,
-					            focus == 0 ? oid_w : name_w,
-					            focus == 0 ? oid_h : name_h,
-					            buf, 1);
+					page = 0;
 				}
 			}
 			if (msg.vkcode == VK_LEFT && page > 0) {
 				page--;
-				need_redraw = 1;
 			}
 			if (msg.vkcode == VK_RIGHT && page < pages - 1) {
 				page++;
-				need_redraw = 1;
 			}
 		}
 		else if (msg.message == WM_CHAR) {
@@ -399,11 +376,7 @@ static void searchOrderWinPdf() {
 				if (len < max_len) {
 					buf[len] = ch;
 					buf[len + 1] = '\0';
-					drawTextBox(focus == 0 ? oid_x : name_x,
-					            focus == 0 ? oid_y : name_y,
-					            focus == 0 ? oid_w : name_w,
-					            focus == 0 ? oid_h : name_h,
-					            buf, 1);
+					page = 0;
 				}
 			}
 		}
@@ -412,98 +385,6 @@ static void searchOrderWinPdf() {
 
 void searchOrderWin() {
 	searchOrderWinPdf();
-	return;
-	WINDOW_T win = {
-		180, 60, 460, 450, WHITE_COLOR, 11, {
-			{190, 70, 440, 30, "订单查询",
-			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
-			{190, 115, 80, INPUT_H, "订单号：",
-			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
-			{270, 115, INPUT_W, INPUT_H, "",
-			 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 1, 0, 0, 0},
-			{190, 160, 80, INPUT_H, "客户名：",
-			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
-			{270, 160, INPUT_W, INPUT_H, "",
-			 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 0, 0, 0, 0},
-			{190, 205, 80, INPUT_H, "状态：",
-			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
-			{270, 205, 200, INPUT_H, "全部|待审核|已驳回|待出库|运输中|已送达|已完成",
-			 WHITE_COLOR, INPUT_BG, BLACK_COLOR, COMBO, 0, 0, 0, 0},
-			{190, 280, BTN_W, BTN_H, "查询",
-			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
-			{380, 280, BTN_W, BTN_H, "全部订单",
-			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
-			{190, 360, BTN_W, BTN_H, "我的订单",
-			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
-			{380, 360, BTN_W, BTN_H, "返回",
-			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
-		}
-	};
-
-	while (1) {
-		window_show(win);
-		win = window_run(win);
-
-		if (win.current == 7) {
-			/* "查询"按钮 — 按条件筛选 */
-			char *order_id  = win.controls[2].text;
-			char *cust_name = win.controls[4].text;
-			int   sel       = win.controls[6].sel_index;
-
-			Order *filtered = NULL, *tail = NULL;
-			Order *p = order_list_head;
-			while (p) {
-				int match = 1;
-				if (strlen(order_id) > 0 && strstr(p->order_id, order_id) == NULL)
-					match = 0;
-				if (strlen(cust_name) > 0 && strstr(p->customer_name, cust_name) == NULL)
-					match = 0;
-				if (sel > 0 && (int)p->status != sel - 1)
-					match = 0;
-
-				if (match) {
-					Order *copy = (Order *)malloc(sizeof(Order));
-					memcpy(copy, p, sizeof(Order));
-					copy->next = NULL;
-					if (!filtered) filtered = copy;
-					else tail->next = copy;
-					tail = copy;
-				}
-				p = p->next;
-			}
-
-			if (!filtered) {
-				MessageBoxA(GetHWnd(), "未找到匹配的订单", "提示", MB_OK | MB_ICONINFORMATION);
-			} else {
-				showOrderList(filtered);
-				while (filtered) {
-					Order *tmp = filtered;
-					filtered = filtered->next;
-					free(tmp);
-				}
-			}
-		}
-		else if (win.current == 8) {
-			showOrderList(order_list_head);
-		}
-		else if (win.current == 9) {
-			/* "我的订单" — 按当前用户ID筛选 */
-			Order *my = order_svc_list_by_user(current_user->id);
-			if (!my) {
-				MessageBoxA(GetHWnd(), "你还没有创建过订单", "提示", MB_OK | MB_ICONINFORMATION);
-			} else {
-				showOrderList(my);
-				while (my) {
-					Order *tmp = my;
-					my = my->next;
-					free(tmp);
-				}
-			}
-		}
-		else if (win.current == 10) {
-			return;
-		}
-	}
 }
 
 /* ========== 订单审核窗口 ========== */
@@ -604,6 +485,224 @@ void auditOrderWin() {
 
 
 
+/* ========== 订单修改窗口 ========== */
+static int goods_type_to_combo_index(const char *gtype) {
+	const char *names[] = {"普通", "易碎", "冷链", "危险品"};
+	for (int i = 0; i < 4; i++)
+		if (strcmp(gtype, names[i]) == 0) return i;
+	return 0;
+}
+
+void modifyOrderWin() {
+	window_clear_frame();
+	window_set_card(1);
+
+	char meta_left[100], meta_right[100];
+	sprintf(meta_left, "当前用户: %s(%s)", current_user->name,
+	        role_to_string(current_user->role));
+	sprintf(meta_right, "登录时间: %s", login_time_str[0] ? login_time_str : "----");
+
+	while (1) {
+		/* --- Phase 1: 输入订单号 --- */
+		WINDOW_T query = {
+			180, 60, 440, 480, WHITE_COLOR, 7, {
+				{190, 76, 430, 26, "智能物流管理系统订单修改界面",
+				 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+				{195, 118, 200, 20, "",
+				 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+				{380, 118, 230, 20, "",
+				 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+				{225, 185, 80, INPUT_H, "订单号:",
+				 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+				{295, 185, 160, INPUT_H, "",
+				 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 1, 0, 0, 0},
+				{235, 260, 100, 30, "查询",
+				 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
+				{365, 260, 100, 30, "返回",
+				 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
+			}
+		};
+		strcpy(query.controls[1].text, meta_left);
+		strcpy(query.controls[2].text, meta_right);
+
+		window_show(query);
+		query = window_run(query);
+
+		if (query.current == 5) {
+			char *oid = query.controls[4].text;
+			if (strlen(oid) == 0) {
+				MessageBoxA(GetHWnd(), "请输入订单号", "提示", MB_OK | MB_ICONWARNING);
+				continue;
+			}
+			Order *o = order_svc_find_by_id(oid);
+			if (!o) {
+				MessageBoxA(GetHWnd(), "订单不存在", "提示", MB_OK | MB_ICONWARNING);
+				continue;
+			}
+			if (o->status != ORDER_PENDING_REVIEW) {
+				MessageBoxA(GetHWnd(), "仅待审核状态可修改", "提示", MB_OK | MB_ICONWARNING);
+				continue;
+			}
+
+			/* --- Phase 2: 预填充编辑表单 --- */
+			window_clear_frame();
+			window_set_card(0);
+			window_set_frame(135, 55, 520, 500);
+
+			char goods_weight_buf[16], goods_qty_buf[16], goods_volume_buf[16];
+			sprintf(goods_weight_buf, "%s", o->goods_weight);
+			sprintf(goods_qty_buf, "%d", o->goods_quantity);
+			sprintf(goods_volume_buf, "%s", o->goods_volume);
+
+			WINDOW_T form = {
+				135, 55, 520, 500, WHITE_COLOR, 27, {
+					{275, 155, 245, 24, "",
+					 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 1, 0, 0, 0},
+					{275, 183, 245, 24, "",
+					 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 0, 0, 0, 0},
+					{275, 211, 245, 24, "",
+					 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 0, 0, 0, 0},
+					{275, 239, 245, 24, "",
+					 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 0, 0, 0, 0},
+					{275, 267, 185, 24, "普通|易碎|冷链|危险品",
+					 WHITE_COLOR, INPUT_BG, BLACK_COLOR, COMBO, 0, 0, 0, 0},
+					{275, 295, 245, 24, "",
+					 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 0, 0, 0, 0},
+					{275, 323, 245, 24, "",
+					 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 0, 0, 0, 0},
+					{275, 351, 245, 24, "",
+					 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 0, 0, 0, 0},
+					{275, 379, 245, 24, "",
+					 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 0, 0, 0, 0},
+					{275, 407, 245, 24, "",
+					 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 0, 0, 0, 0},
+					{225, 460, 100, 30, "保存",
+					 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
+					{390, 460, 100, 30, "返回",
+					 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
+					{245, 78, 300, 26, "智能物流管理系统订单修改界面",
+					 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+					{155, 115, 205, 22, "",
+					 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+					{385, 115, 240, 22, "",
+					 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+					{165, 140, 100, 22, "订单号:",
+					 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+					{275, 140, 230, 22, "",
+					 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+					{165, 160, 100, 22, "客户姓名:",
+					 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+					{165, 188, 100, 22, "联系电话:",
+					 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+					{165, 216, 100, 22, "客户地址:",
+					 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+					{165, 244, 100, 22, "货物名称:",
+					 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+					{165, 272, 100, 22, "货物类型:",
+					 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+					{165, 300, 100, 22, "货物重量:",
+					 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+					{165, 328, 100, 22, "货物数量:",
+					 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+					{165, 356, 100, 22, "货物体积:",
+					 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+					{165, 384, 100, 22, "发货地址:",
+					 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+					{165, 412, 100, 22, "收货地址:",
+					 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+				}
+			};
+
+			/* 预填充所有字段 */
+			strcpy(form.controls[0].text, o->customer_name);
+			strcpy(form.controls[1].text, o->customer_phone);
+			strcpy(form.controls[2].text, o->customer_addr);
+			strcpy(form.controls[3].text, o->goods_name);
+			form.controls[4].sel_index = goods_type_to_combo_index(o->goods_type);
+			strcpy(form.controls[5].text,  goods_weight_buf);
+			strcpy(form.controls[6].text,  goods_qty_buf);
+			strcpy(form.controls[7].text,  goods_volume_buf);
+			strcpy(form.controls[8].text,  o->from_addr);
+			strcpy(form.controls[9].text,  o->to_addr);
+			strcpy(form.controls[13].text, meta_left);
+			strcpy(form.controls[14].text, meta_right);
+			strcpy(form.controls[16].text, o->order_id);
+
+			while (1) {
+				window_show(form);
+				form = window_run(form);
+
+				if (form.current == 10) {
+					/* 保存 */
+					char *name  = form.controls[0].text;
+					char *phone = form.controls[1].text;
+					char *cust_addr = form.controls[2].text;
+					char *goods_name = form.controls[3].text;
+					int  gtype  = form.controls[4].sel_index;
+					char *weight = form.controls[5].text;
+					char *qty = form.controls[6].text;
+					char *volume = form.controls[7].text;
+					char *from  = form.controls[8].text;
+					char *to    = form.controls[9].text;
+
+					if (strlen(name) == 0 || strlen(phone) == 0 ||
+					    strlen(cust_addr) == 0 || strlen(goods_name) == 0 ||
+					    strlen(weight) == 0 || strlen(qty) == 0 ||
+					    strlen(volume) == 0 || strlen(from) == 0 || strlen(to) == 0) {
+						MessageBoxA(GetHWnd(), "订单修改信息不能为空",
+						            "提示", MB_OK | MB_ICONWARNING);
+						continue;
+					}
+					if (atoi(qty) <= 0) {
+						MessageBoxA(GetHWnd(), "货物数量必须为正整数",
+						            "提示", MB_OK | MB_ICONWARNING);
+						continue;
+					}
+
+					Order new_data;
+					memset(&new_data, 0, sizeof(Order));
+					strncpy(new_data.customer_name, name, NAME_LEN - 1);
+					strncpy(new_data.customer_phone, phone, PHONE_LEN - 1);
+					strncpy(new_data.customer_addr, cust_addr, ADDR_LEN - 1);
+					strncpy(new_data.from_addr, from, ADDR_LEN - 1);
+					strncpy(new_data.to_addr, to, ADDR_LEN - 1);
+					strncpy(new_data.goods_name, goods_name, NAME_LEN - 1);
+					strcpy(new_data.goods_type, goods_type_to_string(gtype));
+					strncpy(new_data.goods_weight, weight,
+					        sizeof(new_data.goods_weight) - 1);
+					new_data.goods_quantity = atoi(qty);
+					strncpy(new_data.goods_volume, volume,
+					        sizeof(new_data.goods_volume) - 1);
+
+					int ret = order_svc_update(oid, &new_data);
+					if (ret == 0) {
+						char msg[256];
+						sprintf(msg, "订单 %s 修改成功", oid);
+						MessageBoxA(GetHWnd(), msg, "提示",
+						            MB_OK | MB_ICONINFORMATION);
+						return;
+					} else {
+						MessageBoxA(GetHWnd(), "修改失败，订单状态可能已变更",
+						            "提示", MB_OK | MB_ICONWARNING);
+					}
+				}
+				else if (form.current == 11) {
+					break;    /* 返回 Phase 1 */
+				}
+				else {
+					break;    /* Esc */
+				}
+			}
+		}
+		else if (query.current == 6) {
+			return;
+		}
+		else {
+			return;
+		}
+	}
+}
+
 /* ========== 出入库记录表格（订单跟踪用） ========== */
 static void drawInOutRow(const void *record, int row_idx, int y_base,
                          int table_x, const int *col_widths, int ncols) {
@@ -644,7 +743,7 @@ void trackOrderWin() {
 	window_set_card(1);
 
 	WINDOW_T win = {
-		180, 80, 460, 420, WHITE_COLOR, 9, {
+		180, 80, 460, 420, WHITE_COLOR, 10, {
 			{190, 90, 440, 30, "订单跟踪",
 			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
 			{190, 140, 80, INPUT_H, "订单号：",
@@ -659,7 +758,9 @@ void trackOrderWin() {
 			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
 			{380, 280, BTN_W, BTN_H, "出入库流水",
 			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
-			{210, 370, BTN_W, BTN_H, "返回",
+			{210, 370, BTN_W, BTN_H, "确认完成",
+			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
+			{380, 370, BTN_W, BTN_H, "返回",
 			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
 		}
 	};
@@ -775,6 +876,24 @@ void trackOrderWin() {
 				showInOutList(inout_record_list_head);
 		}
 		else if (win.current == 7) {
+			/* 确认完成 */
+			char *oid = win.controls[2].text;
+			if (strlen(oid) == 0) {
+				MessageBoxA(GetHWnd(), "请先输入订单号", "提示", MB_OK | MB_ICONWARNING);
+				continue;
+			}
+			int ret = order_svc_complete(oid);
+			if (ret == -1)
+				MessageBoxA(GetHWnd(), "订单不存在", "提示", MB_OK | MB_ICONWARNING);
+			else if (ret == -2)
+				MessageBoxA(GetHWnd(), "仅已送达状态可确认完成", "提示", MB_OK | MB_ICONWARNING);
+			else {
+				char msg[128];
+				sprintf(msg, "订单 %s 已完成", oid);
+				MessageBoxA(GetHWnd(), msg, "提示", MB_OK | MB_ICONINFORMATION);
+			}
+		}
+		else if (win.current == 8) {
 			return;
 		}
 	}

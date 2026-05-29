@@ -34,4 +34,7 @@ void showOrderList(const Order *head);
 /* 订单跟踪 — 输入订单号，显示完整详情+出入库记录+操作日志 */
 void trackOrderWin();
 
+/* 订单修改 — 输入订单号→查询→预填充表单→保存（仅待审核状态可改） */
+void modifyOrderWin();
+
 #endif
