@@ -116,8 +116,103 @@ static void serviceStubWin() {
 static void roleMgmtStubWin() {
 	MessageBoxA(GetHWnd(), "角色管理（扩展功能）", "提示", MB_OK);
 }
-static void warehouseConfigStubWin() {
-	MessageBoxA(GetHWnd(), "仓库配置（扩展功能）", "提示", MB_OK);
+/* ========== 仓库配置窗口 ========== */
+static void drawWarehouseRow(const void *record, int row_idx, int y_base,
+                             int table_x, const int *col_widths, int ncols) {
+	const Warehouse *w = (const Warehouse *)record;
+	char buf[64];
+	int x = table_x;
+	settextcolor(TEXT_MAIN);
+	settextstyle(FONT_TABLE_H, FONT_TABLE_W, _T("黑体"));
+
+	sprintf(buf, "%d", w->id);
+	outtextxy(x + CTRL_PADDING, y_base + 8, buf);
+	x += col_widths[0];
+
+	outtextxy(x + CTRL_PADDING, y_base + 8, w->name);
+	x += col_widths[1];
+
+	outtextxy(x + CTRL_PADDING, y_base + 8, w->address);
+	x += col_widths[2];
+
+	sprintf(buf, "%d", w->manager_id);
+	outtextxy(x + CTRL_PADDING, y_base + 8, buf);
+}
+
+static void showWarehouseList(const Warehouse *head) {
+	const char *headers[] = {"ID", "仓库名称", "地址", "负责人ID"};
+	const int col_widths[] = {50, 120, 140, 80};
+	window_show_table("仓库列表", headers, col_widths, 4,
+	                  head, offsetof(Warehouse, next), drawWarehouseRow, PAGE_SIZE);
+}
+
+static void warehouseConfigWin() {
+	window_clear_frame();
+	window_set_card(1);
+
+	WINDOW_T win = {
+		180, 100, 440, 380, WHITE_COLOR, 8, {
+			{190, 110, 420, 30, "仓库配置",
+			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+			{190, 165, 80, INPUT_H, "仓库名称：",
+			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+			{290, 165, INPUT_W, INPUT_H, "",
+			 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 1, 0, 0, 0},
+			{190, 210, 80, INPUT_H, "仓库地址：",
+			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+			{290, 210, INPUT_W, INPUT_H, "",
+			 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 0, 0, 0, 0},
+			{195, 285, BTN_W, BTN_H, "新增仓库",
+			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
+			{410, 285, BTN_W, BTN_H, "仓库列表",
+			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
+			{310, 345, BTN_W, BTN_H, "返回",
+			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
+		}
+	};
+
+	while (1) {
+		window_show(win);
+		win = window_run(win);
+
+		if (win.current == 5) {
+			char *name = win.controls[2].text;
+			char *addr = win.controls[4].text;
+
+			if (strlen(name) == 0 || strlen(addr) == 0) {
+				MessageBoxA(GetHWnd(), "仓库名称和地址不能为空", "提示",
+				            MB_OK | MB_ICONWARNING);
+				continue;
+			}
+
+			Warehouse *w = (Warehouse *)malloc(sizeof(Warehouse));
+			memset(w, 0, sizeof(Warehouse));
+			w->id = ++warehouse_id_counter;
+			strncpy(w->name, name, NAME_LEN - 1);
+			strncpy(w->address, addr, ADDR_LEN - 1);
+			w->manager_id = current_user ? current_user->id : 0;
+			w->next = warehouse_list_head;
+			warehouse_list_head = w;
+
+			warehouse_svc_save_all();
+
+			char msg[256];
+			sprintf(msg, "仓库 \"%s\" 添加成功！", name);
+			MessageBoxA(GetHWnd(), msg, "提示", MB_OK | MB_ICONINFORMATION);
+
+			memset(win.controls[2].text, 0, INPUT_W);
+			memset(win.controls[4].text, 0, INPUT_W);
+		}
+		else if (win.current == 6) {
+			if (!warehouse_list_head)
+				MessageBoxA(GetHWnd(), "暂无仓库记录", "提示", MB_OK | MB_ICONINFORMATION);
+			else
+				showWarehouseList(warehouse_list_head);
+		}
+		else if (win.current == 7) {
+			return;
+		}
+	}
 }
 static void routeConfigStubWin() {
 	MessageBoxA(GetHWnd(), "运输路线配置（扩展功能）", "提示", MB_OK);
@@ -359,7 +454,7 @@ static void sysAdminWin() {
 		{"2. 用户查询",    0, NULL,                      0},
 		{"3. 密码重置",    0, NULL,                      0},
 		{"4. 角色管理",    0, (void(*)())roleMgmtStubWin,     0},
-		{"5. 仓库配置",    0, (void(*)())warehouseConfigStubWin, 0},
+		{"5. 仓库配置",    0, (void(*)())warehouseConfigWin, 0},
 		{"6. 运输路线配置",0, (void(*)())routeConfigStubWin,   0},
 		{"7. 数据备份",    0, (void(*)())dataBackupStubWin,    0},
 		{"8. 返回上级",    0, NULL,                           0},
