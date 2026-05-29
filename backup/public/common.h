@@ -196,6 +196,7 @@ typedef struct InOutRecord {
     int  id;                        /* 流水编号 */
     char order_id[ORDER_ID_LEN];    /* 关联订单号 */
     int  goods_id;                  /* 出入货物id */
+    char goods_name[NAME_LEN];      /* 货物名称 */
     char goods_type[GOODS_TYPE_LEN];/* 货物类型名称 */
     int  quantity;                  /* 出入数量 */
     OperationType op_type;          /* 1=入库, 2=出库 */
@@ -209,6 +210,7 @@ typedef struct Inventory {
     struct Inventory *next;
     int   id;
     int   goods_id;                /* 外键 - Goods.id */
+    char  goods_name[NAME_LEN];    /* 货物名称 */
     char  goods_type[GOODS_TYPE_LEN];/* 货物类型名称 */
     int   warehouse_id;            /* 外键 - Warehouse.id */
     int   quantity;                /* 当前库存数量 */

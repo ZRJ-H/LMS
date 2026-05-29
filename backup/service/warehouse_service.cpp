@@ -117,12 +117,20 @@ Warehouse *warehouse_svc_get_default() {
  *  库存
  * ============================================================ */
 
-Inventory *inventory_svc_find(const char *goods_type, int warehouse_id) {
+Inventory *inventory_svc_find(const char *goods_name, const char *goods_type, int warehouse_id) {
     Inventory *p = inventory_list_head;
     while (p) {
         if (p->warehouse_id == warehouse_id &&
+            strcmp(p->goods_name, goods_name) == 0 &&
             strcmp(p->goods_type, goods_type) == 0)
             return p;
+        if (p->warehouse_id == warehouse_id &&
+            strcmp(p->goods_name, goods_name) == 0 &&
+            strcmp(p->goods_type, goods_name) == 0) {
+            strncpy(p->goods_type, goods_type, GOODS_TYPE_LEN - 1);
+            p->goods_type[GOODS_TYPE_LEN - 1] = '\0';
+            return p;
+        }
         p = p->next;
     }
     return NULL;
@@ -188,13 +196,15 @@ int inbound_svc_execute(const char *order_id, int quantity,
 
     Warehouse *wh = warehouse_svc_get_default();
     const char *stock_name = strlen(order->goods_name) ? order->goods_name : order->goods_type;
-    Inventory *inv = inventory_svc_find(stock_name, wh->id);
+    const char *stock_type = strlen(order->goods_type) ? order->goods_type : stock_name;
+    Inventory *inv = inventory_svc_find(stock_name, stock_type, wh->id);
 
     if (!inv) {
         inv = (Inventory *)malloc(sizeof(Inventory));
         memset(inv, 0, sizeof(Inventory));
         inv->id = ++inventory_id_counter;
-        strcpy(inv->goods_type, stock_name);
+        strncpy(inv->goods_name, stock_name, NAME_LEN - 1);
+        strncpy(inv->goods_type, stock_type, GOODS_TYPE_LEN - 1);
         inv->warehouse_id = wh->id;
         inv->quantity = 0;
         inv->next = inventory_list_head;
@@ -210,7 +220,8 @@ int inbound_svc_execute(const char *order_id, int quantity,
     memset(rec, 0, sizeof(InOutRecord));
     rec->id = ++inout_record_id_counter;
     strncpy(rec->order_id, order_id, ORDER_ID_LEN - 1);
-    strncpy(rec->goods_type, stock_name, GOODS_TYPE_LEN - 1);
+    strncpy(rec->goods_name, stock_name, NAME_LEN - 1);
+    strncpy(rec->goods_type, stock_type, GOODS_TYPE_LEN - 1);
     rec->quantity = quantity;
     rec->op_type = OP_INBOUND;
     get_current_time_str(rec->op_time);
@@ -240,19 +251,21 @@ static int outbound_core(const char *order_id, int quantity,
                          const char *location_id, char *err_msg, int err_len) {
     Warehouse *wh = warehouse_svc_get_default();
     const char *stock_name = NULL;
+    const char *stock_type = NULL;
 
     /* 查找订单以获取货物名称 */
     Order *order = order_svc_find_by_id(order_id);
     if (order) {
         stock_name = strlen(order->goods_name) ? order->goods_name : order->goods_type;
+        stock_type = strlen(order->goods_type) ? order->goods_type : stock_name;
     } else {
         snprintf(err_msg, err_len, "订单 %s 不存在", order_id);
         return -1;
     }
 
-    Inventory *inv = inventory_svc_find(stock_name, wh->id);
+    Inventory *inv = inventory_svc_find(stock_name, stock_type, wh->id);
     if (!inv) {
-        snprintf(err_msg, err_len, "货物类型 %s 暂无库存，请先入库", stock_name);
+        snprintf(err_msg, err_len, "货物 %s 暂无库存，请先入库", stock_name);
         return -3;
     }
     if (inv->quantity < quantity) {
@@ -269,7 +282,8 @@ static int outbound_core(const char *order_id, int quantity,
     memset(rec, 0, sizeof(InOutRecord));
     rec->id = ++inout_record_id_counter;
     strncpy(rec->order_id, order_id, ORDER_ID_LEN - 1);
-    strncpy(rec->goods_type, stock_name, GOODS_TYPE_LEN - 1);
+    strncpy(rec->goods_name, stock_name, NAME_LEN - 1);
+    strncpy(rec->goods_type, stock_type, GOODS_TYPE_LEN - 1);
     rec->quantity = quantity;
     rec->op_type = OP_OUTBOUND;
     get_current_time_str(rec->op_time);

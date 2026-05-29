@@ -330,43 +330,52 @@ static void searchOrderWinPdf() {
 	const int oid_x = UI_PANEL_X + 82, oid_y = UI_PANEL_Y + 84, oid_w = 120, oid_h = 24;
 	const int name_x = UI_PANEL_X + 290, name_y = UI_PANEL_Y + 84, name_w = 78, name_h = 24;
 	const int query_x = UI_PANEL_X + 378, query_y = UI_PANEL_Y + 84, query_w = 52, query_h = 26;
+	int need_redraw = 1;
 
 	while (1) {
 		int pages = order_query_total_pages(order_id, cust_name);
 		if (page >= pages) page = pages - 1;
-		draw_order_query_pdf(order_id, cust_name, focus, page);
+		if (need_redraw) {
+			draw_order_query_pdf(order_id, cust_name, focus, page);
+			need_redraw = 0;
+		}
 		ExMessage msg = getmessage(EX_KEY | EX_CHAR | EX_MOUSE);
 		char *buf = focus == 0 ? order_id : cust_name;
 		int max_len = focus == 0 ? 23 : 31;
 
 		if (msg.message == WM_LBUTTONDOWN) {
 			if (inRect(msg.x, msg.y, oid_x, oid_y, oid_w, oid_h)) {
-				focus = 0;
+				if (focus != 0) { focus = 0; need_redraw = 1; }
 			}
 			else if (inRect(msg.x, msg.y, name_x, name_y, name_w, name_h)) {
-				focus = 1;
+				if (focus != 1) { focus = 1; need_redraw = 1; }
 			}
 			else if (inRect(msg.x, msg.y, query_x, query_y, query_w, query_h)) {
 				page = 0;
+				need_redraw = 1;
 			}
 		}
 		else if (msg.message == WM_KEYDOWN) {
 			if (msg.vkcode == VK_ESCAPE) return;
 			if (msg.vkcode == VK_TAB || msg.vkcode == VK_UP || msg.vkcode == VK_DOWN) {
 				focus = 1 - focus;
+				need_redraw = 1;
 			}
 			if (msg.vkcode == VK_BACK) {
 				int len = (int)strlen(buf);
 				if (len > 0) {
 					buf[len - 1] = '\0';
 					page = 0;
+					need_redraw = 1;
 				}
 			}
 			if (msg.vkcode == VK_LEFT && page > 0) {
 				page--;
+				need_redraw = 1;
 			}
 			if (msg.vkcode == VK_RIGHT && page < pages - 1) {
 				page++;
+				need_redraw = 1;
 			}
 		}
 		else if (msg.message == WM_CHAR) {
@@ -377,6 +386,7 @@ static void searchOrderWinPdf() {
 					buf[len] = ch;
 					buf[len + 1] = '\0';
 					page = 0;
+					need_redraw = 1;
 				}
 			}
 		}
@@ -719,21 +729,25 @@ static void drawInOutRow(const void *record, int row_idx, int y_base,
 	outtextxy(x + CTRL_PADDING, y_base + 8, r->order_id);
 	x += col_widths[1];
 
-	outtextxy(x + CTRL_PADDING, y_base + 8, r->goods_type);
+	outtextxy(x + CTRL_PADDING, y_base + 8,
+	          strlen(r->goods_name) ? r->goods_name : r->goods_type);
 	x += col_widths[2];
+
+	outtextxy(x + CTRL_PADDING, y_base + 8, r->goods_type);
+	x += col_widths[3];
 
 	sprintf(buf, "%d", r->quantity);
 	outtextxy(x + CTRL_PADDING, y_base + 8, buf);
-	x += col_widths[3];
+	x += col_widths[4];
 
 	outtextxy(x + CTRL_PADDING, y_base + 8,
 	          (char *)operation_type_to_string(r->op_type));
 }
 
 static void showInOutList(const InOutRecord *head) {
-	const char *headers[] = {"ID", "订单号", "货物类型", "数量", "操作"};
-	const int col_widths[] = {50, 180, 100, 60, 60};
-	window_show_table("出入库记录", headers, col_widths, 5,
+	const char *headers[] = {"ID", "订单号", "货物名称", "货物类型", "数量", "操作"};
+	const int col_widths[] = {45, 155, 85, 75, 55, 60};
+	window_show_table("出入库记录", headers, col_widths, 6,
 	                  head, offsetof(InOutRecord, next), drawInOutRow, PAGE_SIZE);
 }
 

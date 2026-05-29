@@ -37,7 +37,7 @@ int  outbound_svc_execute_by_dispatch(const char *dispatch_id, int quantity,
                                       const char *location_id, char *err_msg, int err_len);
 
 /* ---- Inventory ---- */
-Inventory *inventory_svc_find(const char *goods_type, int warehouse_id);
+Inventory *inventory_svc_find(const char *goods_name, const char *goods_type, int warehouse_id);
 Inventory *inventory_svc_list_all();
 int         inventory_svc_count();
 

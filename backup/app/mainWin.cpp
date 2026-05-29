@@ -358,11 +358,15 @@ static void draw_user_query_pdf(const char *keyword, int page) {
 static void searchUserWinPdf() {
 	char keyword[64] = {0};
 	int page = 0;
+	int need_redraw = 1;
 
 	while (1) {
 		int pages = user_query_total_pages(keyword);
 		if (page >= pages) page = pages - 1;
-		draw_user_query_pdf(keyword, page);
+		if (need_redraw) {
+			draw_user_query_pdf(keyword, page);
+			need_redraw = 0;
+		}
 		ExMessage msg = getmessage(EX_KEY | EX_CHAR | EX_MOUSE);
 
 		if (msg.message == WM_LBUTTONDOWN) {
@@ -374,10 +378,10 @@ static void searchUserWinPdf() {
 			if (msg.vkcode == VK_ESCAPE) return;
 			if (msg.vkcode == VK_BACK) {
 				int len = (int)strlen(keyword);
-				if (len > 0) { keyword[len - 1] = '\0'; page = 0; }
+				if (len > 0) { keyword[len - 1] = '\0'; page = 0; need_redraw = 1; }
 			}
-			if (msg.vkcode == VK_LEFT && page > 0) page--;
-			if (msg.vkcode == VK_RIGHT && page < pages - 1) page++;
+			if (msg.vkcode == VK_LEFT && page > 0) { page--; need_redraw = 1; }
+			if (msg.vkcode == VK_RIGHT && page < pages - 1) { page++; need_redraw = 1; }
 		}
 		else if (msg.message == WM_CHAR) {
 			char ch = (char)msg.ch;
@@ -387,6 +391,7 @@ static void searchUserWinPdf() {
 					keyword[len] = ch;
 					keyword[len + 1] = '\0';
 					page = 0;
+					need_redraw = 1;
 				}
 			}
 		}
@@ -670,32 +675,37 @@ static void drawInventoryRow(const void *record, int row_idx, int y_base,
 	outtextxy(x + CTRL_PADDING, y_base + 8, buf);
 	x += col_widths[0];
 
-	outtextxy(x + CTRL_PADDING, y_base + 8, inv->goods_type);
+	outtextxy(x + CTRL_PADDING, y_base + 8,
+	          strlen(inv->goods_name) ? inv->goods_name : inv->goods_type);
 	x += col_widths[1];
+
+	outtextxy(x + CTRL_PADDING, y_base + 8, inv->goods_type);
+	x += col_widths[2];
 
 	sprintf(buf, "%d", inv->quantity);
 	outtextxy(x + CTRL_PADDING, y_base + 8, buf);
-	x += col_widths[2];
+	x += col_widths[3];
 
 	outtextxy(x + CTRL_PADDING, y_base + 8,
 	          strlen(inv->location_id) ? inv->location_id : "--");
-	x += col_widths[3];
+	x += col_widths[4];
 
 	outtextxy(x + CTRL_PADDING, y_base + 8,
 	          strlen(inv->in_time) ? inv->in_time : "--");
 }
 
 static void showInventoryList(const Inventory *head) {
-	const char *headers[] = {"ID", "货物类型", "库存数量", "货位", "最后入库"};
-	const int col_widths[] = {50, 100, 100, 80, 160};
-	window_show_table("库存列表", headers, col_widths, 5,
+	const char *headers[] = {"ID", "货物名称", "货物类型", "库存数量", "货位", "最后入库"};
+	const int col_widths[] = {45, 90, 80, 80, 70, 150};
+	window_show_table("库存列表", headers, col_widths, 6,
 	                  head, offsetof(Inventory, next), drawInventoryRow, PAGE_SIZE);
 }
 
 static int inventory_matches_query_pdf(const Inventory *inv,
                                        const char *goods_name,
                                        const char *location_id) {
-	if (goods_name[0] && strstr(inv->goods_type, goods_name) == NULL) return 0;
+	const char *name = strlen(inv->goods_name) ? inv->goods_name : inv->goods_type;
+	if (goods_name[0] && strstr(name, goods_name) == NULL) return 0;
 	if (location_id[0] && strstr(inv->location_id, location_id) == NULL) return 0;
 	return 1;
 }
@@ -712,7 +722,7 @@ static void draw_inventory_query_pdf(const char *goods_name,
                                      const char *location_id,
                                      int focus,
                                      int page) {
-	const int col_w[6] = {45, 85, 75, 70, 70, 90};
+	const int col_w[6] = {36, 78, 68, 66, 68, 82};
 	const char *headers[6] = {"序号", "货物名称", "货物类型", "库存数量", "存储货位", "入库时间"};
 	int header_h = 22, row_h = 22;
 	int total_w = col_w[0] + col_w[1] + col_w[2] + col_w[3] + col_w[4] + col_w[5];
@@ -721,6 +731,7 @@ static void draw_inventory_query_pdf(const char *goods_name,
 	int start = page * 3;
 	int shown = 0, idx = 0, x;
 	char buf[64];
+	char date_buf[16];
 
 	cleardevice();
 	redraw_bg();
@@ -730,7 +741,7 @@ static void draw_inventory_query_pdf(const char *goods_name,
 
 	settextstyle(FONT_SMALL_H, FONT_SMALL_W, _T("黑体"));
 	settextcolor(TEXT_MAIN);
-	outtextxy(UI_PANEL_X + 35, UI_PANEL_Y + 91, "货位名称:");
+	outtextxy(UI_PANEL_X + 35, UI_PANEL_Y + 91, "货物名称:");
 	drawTextBox(UI_PANEL_X + 105, UI_PANEL_Y + 84, 100, 24, goods_name, focus == 0);
 	outtextxy(UI_PANEL_X + 230, UI_PANEL_Y + 91, "货位编号:");
 	drawTextBox(UI_PANEL_X + 300, UI_PANEL_Y + 84, 80, 24, location_id, focus == 1);
@@ -761,12 +772,18 @@ static void draw_inventory_query_pdf(const char *goods_name,
 
 		sprintf(buf, "%d", p->id);
 		outtextxy(x + 4, y + 5, buf); x += col_w[0];
-		outtextxy(x + 4, y + 5, p->goods_type); x += col_w[1];
+		outtextxy(x + 4, y + 5, strlen(p->goods_name) ? p->goods_name : p->goods_type); x += col_w[1];
 		outtextxy(x + 4, y + 5, p->goods_type); x += col_w[2];
 		sprintf(buf, "%d", p->quantity);
 		outtextxy(x + 4, y + 5, buf); x += col_w[3];
 		outtextxy(x + 4, y + 5, strlen(p->location_id) ? p->location_id : "--"); x += col_w[4];
-		outtextxy(x + 4, y + 5, strlen(p->in_time) ? p->in_time : "--");
+		if (strlen(p->in_time) >= 10) {
+			strncpy(date_buf, p->in_time, 10);
+			date_buf[10] = '\0';
+			outtextxy(x + 4, y + 5, date_buf);
+		} else {
+			outtextxy(x + 4, y + 5, strlen(p->in_time) ? p->in_time : "--");
+		}
 
 		int vx = table_x;
 		for (int c = 0; c < 6; c++) {
@@ -788,30 +805,41 @@ static void inventoryQueryWinPdf() {
 	char goods_name[64] = {0};
 	char location_id[64] = {0};
 	int focus = 0, page = 0;
+	int need_redraw = 1;
 
 	while (1) {
 		int pages = inventory_query_total_pages(goods_name, location_id);
 		if (page >= pages) page = pages - 1;
-		draw_inventory_query_pdf(goods_name, location_id, focus, page);
+		if (need_redraw) {
+			draw_inventory_query_pdf(goods_name, location_id, focus, page);
+			need_redraw = 0;
+		}
 		ExMessage msg = getmessage(EX_KEY | EX_CHAR | EX_MOUSE);
 		char *buf = focus == 0 ? goods_name : location_id;
 		int max_len = focus == 0 ? 31 : 15;
 
 		if (msg.message == WM_LBUTTONDOWN) {
 			if (msg.x >= UI_PANEL_X + 105 && msg.x <= UI_PANEL_X + 205 &&
-			    msg.y >= UI_PANEL_Y + 84 && msg.y <= UI_PANEL_Y + 108) focus = 0;
+			    msg.y >= UI_PANEL_Y + 84 && msg.y <= UI_PANEL_Y + 108) {
+				if (focus != 0) { focus = 0; need_redraw = 1; }
+			}
 			else if (msg.x >= UI_PANEL_X + 300 && msg.x <= UI_PANEL_X + 380 &&
-			         msg.y >= UI_PANEL_Y + 84 && msg.y <= UI_PANEL_Y + 108) focus = 1;
+			         msg.y >= UI_PANEL_Y + 84 && msg.y <= UI_PANEL_Y + 108) {
+				if (focus != 1) { focus = 1; need_redraw = 1; }
+			}
 		}
 		else if (msg.message == WM_KEYDOWN) {
 			if (msg.vkcode == VK_ESCAPE) return;
-			if (msg.vkcode == VK_TAB) focus = 1 - focus;
+			if (msg.vkcode == VK_TAB || msg.vkcode == VK_UP || msg.vkcode == VK_DOWN) {
+				focus = 1 - focus;
+				need_redraw = 1;
+			}
 			if (msg.vkcode == VK_BACK) {
 				int len = (int)strlen(buf);
-				if (len > 0) { buf[len - 1] = '\0'; page = 0; }
+				if (len > 0) { buf[len - 1] = '\0'; page = 0; need_redraw = 1; }
 			}
-			if (msg.vkcode == VK_LEFT && page > 0) page--;
-			if (msg.vkcode == VK_RIGHT && page < pages - 1) page++;
+			if (msg.vkcode == VK_LEFT && page > 0) { page--; need_redraw = 1; }
+			if (msg.vkcode == VK_RIGHT && page < pages - 1) { page++; need_redraw = 1; }
 		}
 		else if (msg.message == WM_CHAR) {
 			char ch = (char)msg.ch;
@@ -821,6 +849,7 @@ static void inventoryQueryWinPdf() {
 					buf[len] = ch;
 					buf[len + 1] = '\0';
 					page = 0;
+					need_redraw = 1;
 				}
 			}
 		}
@@ -843,21 +872,25 @@ static void drawInOutRow(const void *record, int row_idx, int y_base,
 	outtextxy(x + CTRL_PADDING, y_base + 8, r->order_id);
 	x += col_widths[1];
 
-	outtextxy(x + CTRL_PADDING, y_base + 8, r->goods_type);
+	outtextxy(x + CTRL_PADDING, y_base + 8,
+	          strlen(r->goods_name) ? r->goods_name : r->goods_type);
 	x += col_widths[2];
+
+	outtextxy(x + CTRL_PADDING, y_base + 8, r->goods_type);
+	x += col_widths[3];
 
 	sprintf(buf, "%d", r->quantity);
 	outtextxy(x + CTRL_PADDING, y_base + 8, buf);
-	x += col_widths[3];
+	x += col_widths[4];
 
 	outtextxy(x + CTRL_PADDING, y_base + 8,
 	          (char *)operation_type_to_string(r->op_type));
 }
 
 static void showInOutList(const InOutRecord *head) {
-	const char *headers[] = {"ID", "订单号", "货物类型", "数量", "操作"};
-	const int col_widths[] = {50, 180, 100, 60, 60};
-	window_show_table("出入库记录", headers, col_widths, 5,
+	const char *headers[] = {"ID", "订单号", "货物名称", "货物类型", "数量", "操作"};
+	const int col_widths[] = {45, 155, 85, 75, 55, 60};
+	window_show_table("出入库记录", headers, col_widths, 6,
 	                  head, offsetof(InOutRecord, next), drawInOutRow, PAGE_SIZE);
 }
 
@@ -869,35 +902,51 @@ static void inventoryWin();
 static void stocktakingWin();
 
 static void warehouseMgmtWin() {
+	char meta_left[100], meta_right[100];
+
 	window_clear_frame();
-	window_set_card(1);
+	window_set_card(0);
+	window_set_frame(90, 50, 620, 390);
+
+	sprintf(meta_left, "当前用户: %s(%s)",
+	        current_user->name, role_to_string(current_user->role));
+	sprintf(meta_right, "登录时间: %s",
+	        login_time_str[0] ? login_time_str : "----");
 
 	WINDOW_T win = {
-		220, 120, 360, 410, WHITE_COLOR, 6, {
-			{230, 135, 340, 30, "仓储管理",
+		90, 50, 620, 390, WHITE_COLOR, 8, {
+			{205, 75, 390, 30, "智能物流管理系统仓储管理界面",
 			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
-			{230, 180, 320, BTN_H, "入库管理",
+			{125, 130, 240, 24, "",
+			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+			{410, 130, 260, 24, "",
+			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
+			{135, 180, 190, 36, "1. 货物入库",
 			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 1, 0, 0, TEXT_MAIN},
-			{230, 235, 320, BTN_H, "出库管理",
+			{410, 180, 190, 36, "2. 货物出库",
 			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
-			{230, 290, 320, BTN_H, "库存查询",
+			{135, 235, 190, 36, "3. 库存管理",
 			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
-			{230, 345, 320, BTN_H, "库存盘点",
+			{410, 235, 190, 36, "4. 返回上级",
 			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
-			{230, 420, BTN_W, BTN_H, "返回",
-			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
+			{135, 325, 470, 24, "操作说明: 通过上下键切换菜单，按Enter键进入",
+			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
 		}
 	};
+	strcpy(win.controls[1].text, meta_left);
+	strcpy(win.controls[2].text, meta_right);
 
 	while (1) {
+		window_set_card(0);
+		window_set_frame(90, 50, 620, 390);
 		window_show(win);
 		win = window_run(win);
 		switch (win.current) {
-		case 1: inboundWin(); break;
-		case 2: outboundWin(); break;
-		case 3: inventoryWin(); break;
-		case 4: stocktakingWin(); break;
-		case 5: return;
+		case 3: inboundWin(); break;
+		case 4: outboundWin(); break;
+		case 5: inventoryWin(); break;
+		case 6: return;
+		default: return;
 		}
 	}
 }
@@ -985,9 +1034,10 @@ static void inboundWin() {
 			                              err, sizeof(err));
 			if (ret == 0) {
 				char msg[256];
+				Order *order = order_svc_find_by_id(oid);
 				sprintf(msg, "入库成功！\n订单号: %s\n货物: %s x%d",
 				        oid,
-				        order_svc_find_by_id(oid)->goods_type, qty);
+				        order && strlen(order->goods_name) ? order->goods_name : (order ? order->goods_type : ""), qty);
 				MessageBoxA(GetHWnd(), msg, "提示", MB_OK | MB_ICONINFORMATION);
 				return;
 			} else {
@@ -1164,11 +1214,13 @@ static void stocktakingWin() {
 			char result[384];
 			sprintf(result,
 			        "===== 盘点结果 =====\n\n"
+			        "货物名称: %s\n"
 			        "货物类型: %s\n"
 			        "系统数量: %d\n"
 			        "实际数量: %d\n"
 			        "差    异: %+d\n\n"
 			        "%s",
+			        strlen(inv->goods_name) ? inv->goods_name : inv->goods_type,
 			        inv->goods_type, sys_qty, actual_qty, diff,
 			        diff == 0 ? "盘点一致" : "! 存在差异，请核查！");
 

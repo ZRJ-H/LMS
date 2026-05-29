@@ -563,9 +563,9 @@ static void txt_write_header(FILE *fp, const char *type_name) {
     else if (strcmp(type_name, "Warehouse") == 0)
         fprintf(fp, "#type=Warehouse\n#fields=id|name|address|manager_id\n");
     else if (strcmp(type_name, "InOutRecord") == 0)
-        fprintf(fp, "#type=InOutRecord\n#fields=id|order_id|goods_id|goods_type|quantity|op_type|op_time|location_id|operator_id\n");
+        fprintf(fp, "#type=InOutRecord\n#fields=id|order_id|goods_id|goods_name|goods_type|quantity|op_type|op_time|location_id|operator_id\n");
     else if (strcmp(type_name, "Inventory") == 0)
-        fprintf(fp, "#type=Inventory\n#fields=id|goods_id|goods_type|warehouse_id|quantity|location_id|in_time\n");
+        fprintf(fp, "#type=Inventory\n#fields=id|goods_id|goods_name|goods_type|warehouse_id|quantity|location_id|in_time\n");
     else if (strcmp(type_name, "OperationLog") == 0)
         fprintf(fp, "#type=OperationLog\n#fields=id|operator_id|operator_name|action|timestamp\n");
     else if (strcmp(type_name, "Vehicle") == 0)
@@ -618,6 +618,7 @@ static void txt_save_record(FILE *fp, const void *record, size_t record_size) {
         fprintf(fp, "%d", r->id); txt_write_sep(fp);
         txt_write_field(fp, r->order_id); txt_write_sep(fp);
         fprintf(fp, "%d", r->goods_id); txt_write_sep(fp);
+        txt_write_field(fp, r->goods_name); txt_write_sep(fp);
         txt_write_field(fp, r->goods_type); txt_write_sep(fp);
         fprintf(fp, "%d|%d", r->quantity, (int)r->op_type); txt_write_sep(fp);
         txt_write_field(fp, r->op_time); txt_write_sep(fp);
@@ -626,6 +627,7 @@ static void txt_save_record(FILE *fp, const void *record, size_t record_size) {
     } else if (record_size == sizeof(Inventory)) {
         const Inventory *v = (const Inventory *)record;
         fprintf(fp, "%d|%d", v->id, v->goods_id); txt_write_sep(fp);
+        txt_write_field(fp, v->goods_name); txt_write_sep(fp);
         txt_write_field(fp, v->goods_type); txt_write_sep(fp);
         fprintf(fp, "%d|%d", v->warehouse_id, v->quantity); txt_write_sep(fp);
         txt_write_field(fp, v->location_id); txt_write_sep(fp);
@@ -737,22 +739,43 @@ static int txt_parse_record(const char *line, void *record, size_t record_size) 
         r->id = atoi(fields[0]);
         txt_copy_field(r->order_id, ORDER_ID_LEN, fields[1]);
         r->goods_id = atoi(fields[2]);
-        txt_copy_field(r->goods_type, GOODS_TYPE_LEN, fields[3]);
-        r->quantity = atoi(fields[4]);
-        r->op_type = (OperationType)atoi(fields[5]);
-        txt_copy_field(r->op_time, sizeof(r->op_time), fields[6]);
-        txt_copy_field(r->location_id, LOCATION_LEN, fields[7]);
-        r->operator_id = atoi(fields[8]);
+        if (n >= 10) {
+            txt_copy_field(r->goods_name, NAME_LEN, fields[3]);
+            txt_copy_field(r->goods_type, GOODS_TYPE_LEN, fields[4]);
+            r->quantity = atoi(fields[5]);
+            r->op_type = (OperationType)atoi(fields[6]);
+            txt_copy_field(r->op_time, sizeof(r->op_time), fields[7]);
+            txt_copy_field(r->location_id, LOCATION_LEN, fields[8]);
+            r->operator_id = atoi(fields[9]);
+        } else {
+            txt_copy_field(r->goods_name, NAME_LEN, fields[3]);
+            txt_copy_field(r->goods_type, GOODS_TYPE_LEN, fields[3]);
+            r->quantity = atoi(fields[4]);
+            r->op_type = (OperationType)atoi(fields[5]);
+            txt_copy_field(r->op_time, sizeof(r->op_time), fields[6]);
+            txt_copy_field(r->location_id, LOCATION_LEN, fields[7]);
+            r->operator_id = atoi(fields[8]);
+        }
         return 0;
     } else if (record_size == sizeof(Inventory) && n >= 7) {
         Inventory *v = (Inventory *)record;
         v->id = atoi(fields[0]);
         v->goods_id = atoi(fields[1]);
-        txt_copy_field(v->goods_type, GOODS_TYPE_LEN, fields[2]);
-        v->warehouse_id = atoi(fields[3]);
-        v->quantity = atoi(fields[4]);
-        txt_copy_field(v->location_id, LOCATION_LEN, fields[5]);
-        txt_copy_field(v->in_time, sizeof(v->in_time), fields[6]);
+        if (n >= 8) {
+            txt_copy_field(v->goods_name, NAME_LEN, fields[2]);
+            txt_copy_field(v->goods_type, GOODS_TYPE_LEN, fields[3]);
+            v->warehouse_id = atoi(fields[4]);
+            v->quantity = atoi(fields[5]);
+            txt_copy_field(v->location_id, LOCATION_LEN, fields[6]);
+            txt_copy_field(v->in_time, sizeof(v->in_time), fields[7]);
+        } else {
+            txt_copy_field(v->goods_name, NAME_LEN, fields[2]);
+            txt_copy_field(v->goods_type, GOODS_TYPE_LEN, fields[2]);
+            v->warehouse_id = atoi(fields[3]);
+            v->quantity = atoi(fields[4]);
+            txt_copy_field(v->location_id, LOCATION_LEN, fields[5]);
+            txt_copy_field(v->in_time, sizeof(v->in_time), fields[6]);
+        }
         return 0;
     } else if (record_size == sizeof(OperationLog) && n >= 5) {
         OperationLog *l = (OperationLog *)record;
