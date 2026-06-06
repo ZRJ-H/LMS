@@ -35,6 +35,7 @@ typedef struct control_t {
 	int visible;         /* EDIT_PWD: 0=掩码, 1=明文 */
 	int sel_index;       /* COMBO 选中项索引 */
 	COLORREF textColor2; /* 未选中态文字色（0=默认用 textColor） */
+	int input_filter;    /* InputFilter 枚举值 */
 } CONTROL_T;
 
 /* ---- 窗口结构体 ---- */

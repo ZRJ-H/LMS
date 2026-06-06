@@ -403,7 +403,7 @@ back_to_list:;
 						{190, 160, 80, INPUT_H, "调度单号:",
 						 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
 						{290, 160, 270, INPUT_H, "",
-						 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 1, 0, 0, 0},
+						 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 1, 0, 0, 0, INPUT_FILTER_ALNUM},
 						{190, 210, 80, INPUT_H, "更新状态:",
 						 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
 						{290, 210, 270, INPUT_H, "已出发|已到达中转站|已送达|异常",
@@ -411,7 +411,7 @@ back_to_list:;
 						{190, 260, 80, INPUT_H, "异常原因:",
 						 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
 						{290, 260, 270, INPUT_H, "",
-						 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 0, 0, 0, 0},
+						 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 0, 0, 0, 0, INPUT_FILTER_CHINESE},
 						{210, 330, BTN_W, BTN_H, "更新状态",
 						 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
 						{410, 330, BTN_W, BTN_H, "返回",
@@ -503,22 +503,15 @@ back_to_list2:;
 		else if (msg.message == WM_KEYDOWN) {
 			if (msg.vkcode == VK_ESCAPE) return;
 			if (msg.vkcode == VK_BACK) {
-				int len = (int)strlen(buf);
-				if (len > 0) { buf[len - 1] = '\0'; page = 0; need_redraw = 1; }
+				if (input_delete_last_char(buf)) { page = 0; need_redraw = 1; }
 			}
 			if (msg.vkcode == VK_LEFT && page > 0) { page--; need_redraw = 1; }
 			if (msg.vkcode == VK_RIGHT && page < pages - 1) { page++; need_redraw = 1; }
 		}
 		else if (msg.message == WM_CHAR) {
-			char ch = (char)msg.ch;
-			if (ch >= 32 && ch <= 126) {
-				int len = (int)strlen(buf);
-				if (len < max_len) {
-					buf[len] = ch;
-					buf[len + 1] = '\0';
-					page = 0;
-					need_redraw = 1;
-				}
+			if (input_append_char(buf, max_len, msg.ch, INPUT_FILTER_ALNUM)) {
+				page = 0;
+				need_redraw = 1;
 			}
 		}
 	}

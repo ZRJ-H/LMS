@@ -1,32 +1,34 @@
-# 编译产物
+# Build artifacts
 *.exe
 *.o
 *.obj
 *.out
 backup/output/
 
-# IDE / 工具配置（不提交）
-.vscode/
-.claude/
+# Runtime data and optional local assets
+backup/data/
+image/
 
-# 文档与日志（不提交）
+# IDE settings and caches
+.vs/
+.vscode/
+backup/.vs/
+
+# AI tool configuration and private work notes
+.claude/
+backup/.claude/
+CLAUDE.md
 docs/
 dailyRpt.md
 handoff.md
 plan.md
-CLAUDE.md
 
-# Python 缓存
-__pycache__/
-*.pyc
+# Local test files
+backup/test_*.cpp
+backup/test_*.exe
 
-# 系统垃圾文件
-Thumbs.db
-Desktop.ini
-~$*
-*.tmp
-
-# 大型二进制资源（非源码）
+# Documents and generated media
+UI*.md
 *.pdf
 *.xlsx
 *.doc
@@ -34,16 +36,14 @@ Desktop.ini
 *.png
 *.bmp
 *.jpg
-!backup/image/
 
-# 运行时数据（不提交）
-backup/data/
+# System and temporary files
+__pycache__/
+*.pyc
+Thumbs.db
+Desktop.ini
+~$*
+*.tmp
 
-# 测试文件（不提交）
-backup/test_*.cpp
-
-# 根目录资源（已迁移到 backup/image/）
-image/
-
-# 项目交付区（只读源）
+# Local delivery directory
 C_LMS/

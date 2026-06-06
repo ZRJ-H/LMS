@@ -11,6 +11,8 @@
 #include "../view/control.h"
 #include "../service/user_service.h"
 #include "../service/order_service.h"
+#include "../service/stats_service.h"
+#include "../service/backup_service.h"
 #include "transportWin.h"
 #include "warehouseWin.h"
 
@@ -26,26 +28,6 @@ static void drawPageHeader(const char *title) {
 	        login_time_str[0] ? login_time_str : "----");
 	ui_draw_title(title);
 	ui_draw_meta(info_left_new, info_right_new);
-	return;
-	/* 标题 */
-	settextstyle(FONT_TITLE_H - 4, 0, _T("黑体"));
-	settextcolor(TEXT_MAIN);
-	int tx = (WIN_W - textwidth(title)) / 2;
-	outtextxy(tx, 40, title);
-
-	/* 用户信息栏 — 左侧 */
-	settextstyle(FONT_BTN_H, FONT_BTN_W, _T("黑体"));
-	settextcolor(TEXT_MAIN);
-	char info_left[128];
-	sprintf(info_left, "当前用户：%s(%s)",
-	        current_user->name, role_to_string(current_user->role));
-	outtextxy(80, 105, info_left);
-
-	/* 用户信息栏 — 右侧（登录时间） */
-	char info_right[128];
-	sprintf(info_right, "登录时间：%s",
-	        login_time_str[0] ? login_time_str : "----");
-	outtextxy(480, 105, info_right);
 }
 
 static void drawQueryFrame(const char *title, int panel_h) {
@@ -105,9 +87,6 @@ typedef struct {
 } MenuItem;
 
 /* ------- 占位窗口（尚未实现的模块）------- */
-static void statsStubWin() {
-	MessageBoxA(GetHWnd(), "统计分析（扩展功能）", "提示", MB_OK);
-}
 static void serviceStubWin() {
 	MessageBoxA(GetHWnd(), "客户服务（扩展功能）", "提示", MB_OK);
 }
@@ -117,8 +96,383 @@ static void roleMgmtStubWin() {
 static void routeConfigStubWin() {
 	MessageBoxA(GetHWnd(), "运输路线配置（扩展功能）", "提示", MB_OK);
 }
-static void dataBackupStubWin() {
-	MessageBoxA(GetHWnd(), "数据备份（扩展功能）", "提示", MB_OK);
+static void dataBackupWin() {
+	WINDOW_T win = {
+		0, 0, WIN_W, WIN_H, WHITE_COLOR, 4, {
+			{MENU_COL_LEFT,  MENU_ROWS_Y[0], MENU_W, MENU_H, "1. 手动备份",
+			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 1, 0, 0, TEXT_MAIN},
+			{MENU_COL_RIGHT, MENU_ROWS_Y[0], MENU_W, MENU_H, "2. 数据恢复",
+			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
+			{MENU_COL_LEFT,  MENU_ROWS_Y[1], MENU_W, MENU_H, "3. 查看说明",
+			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
+			{MENU_COL_RIGHT, MENU_ROWS_Y[1], MENU_W, MENU_H, "4. 返回上级",
+			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
+		}
+	};
+
+	window_clear_frame();
+	window_set_card(1);
+	while (1) {
+		window_show(win);
+		drawPageHeader("智能物流管理系统数据备份界面");
+		win = window_run(win);
+
+		if (win.current == 0) {
+			char dir[MAX_PATH];
+			char msg[256];
+			int copied = backup_svc_create_manual(dir, sizeof(dir));
+			sprintf(msg, "备份完成：%d 个数据文件\n目录：%s", copied, dir);
+			MessageBoxA(GetHWnd(), msg, "数据备份", MB_OK | MB_ICONINFORMATION);
+		} else if (win.current == 1) {
+			int ok = MessageBoxA(GetHWnd(),
+				"将从最近一次备份恢复数据文件，当前数据会被覆盖。\n恢复后请重启系统使数据重新加载。\n是否继续？",
+				"数据恢复确认", MB_YESNO | MB_ICONWARNING);
+			if (ok == IDYES) {
+				int restored = backup_svc_restore_latest();
+				char msg[256];
+				if (restored < 0) {
+					MessageBoxA(GetHWnd(), "没有找到可恢复的备份目录", "数据恢复", MB_OK | MB_ICONWARNING);
+				} else {
+					sprintf(msg, "恢复完成：%d 个数据文件\n请退出并重新启动系统。", restored);
+					MessageBoxA(GetHWnd(), msg, "数据恢复", MB_OK | MB_ICONINFORMATION);
+				}
+			}
+		} else if (win.current == 2) {
+			MessageBoxA(GetHWnd(),
+				"手动备份会复制 users/orders/warehouse/transport 等 TXT 数据文件。\n数据恢复默认使用最近一次备份。",
+				"说明", MB_OK | MB_ICONINFORMATION);
+		} else if (win.current == 3) {
+			return;
+		}
+	}
+}
+
+typedef enum {
+	STAT_RANGE_TODAY = 0,
+	STAT_RANGE_WEEK,
+	STAT_RANGE_MONTH
+} StatRange;
+
+static void make_stat_range(StatRange range, char *start_ymd, char *end_ymd) {
+	time_t now = time(NULL);
+	struct tm t = *localtime(&now);
+	sprintf(end_ymd, "%04d%02d%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
+
+	if (range == STAT_RANGE_TODAY) {
+		strcpy(start_ymd, end_ymd);
+		return;
+	}
+	if (range == STAT_RANGE_WEEK) {
+		int back_days = (t.tm_wday == 0) ? 6 : t.tm_wday - 1;
+		now -= (time_t)back_days * 24 * 60 * 60;
+		t = *localtime(&now);
+	} else {
+		t.tm_mday = 1;
+	}
+	sprintf(start_ymd, "%04d%02d%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
+}
+
+static void drawStatButton(int x, int y, int w, int h, const char *text, int active) {
+	setlinecolor(INPUT_BORDER);
+	setfillcolor(active ? PRIMARY : WHITE_COLOR);
+	fillrectangle(x, y, x + w, y + h);
+	rectangle(x, y, x + w, y + h);
+	settextstyle(FONT_BTN_H, FONT_BTN_W, _T("黑体"));
+	settextcolor(active ? WHITE_COLOR : TEXT_MAIN);
+	outtextxy(x + (w - textwidth(text)) / 2, y + (h - textheight(text)) / 2, (char *)text);
+}
+
+static void draw_order_stats_pdf(const OrderStatResult *stat, StatRange range) {
+	char line[160];
+	int y = UI_PANEL_Y + 175;
+	int total = stat->total_orders ? stat->total_orders : 1;
+
+	cleardevice();
+	redraw_bg();
+	window_clear_frame();
+	window_set_card(1);
+	drawQueryFrame("智能物流管理系统订单统计界面", 370);
+
+	drawStatButton(UI_PANEL_X + 25, UI_PANEL_Y + 135, 70, 30, "今日", range == STAT_RANGE_TODAY);
+	drawStatButton(UI_PANEL_X + 110, UI_PANEL_Y + 135, 70, 30, "本周", range == STAT_RANGE_WEEK);
+	drawStatButton(UI_PANEL_X + 195, UI_PANEL_Y + 135, 70, 30, "本月", range == STAT_RANGE_MONTH);
+
+	settextstyle(FONT_SMALL_H, FONT_SMALL_W, _T("黑体"));
+	settextcolor(TEXT_MAIN);
+	outtextxy(UI_PANEL_X + 25, y, "================订单统计结果================"); y += 24;
+	sprintf(line, "统计时间：%s 至 %s", stat->start_date, stat->end_date);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 24;
+	sprintf(line, "总订单数：%d", stat->total_orders);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 24;
+	sprintf(line, "已完成订单数：%d", stat->completed_orders);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 24;
+	sprintf(line, "订单完成率：%.1f%%", stat->completion_rate);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 24;
+	sprintf(line, "驳回订单数：%d", stat->rejected_orders);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 24;
+	sprintf(line, "驳回率：%.1f%%", stat->rejection_rate);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 24;
+	sprintf(line, "运输中订单数：%d", stat->in_transit_orders);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 24;
+	sprintf(line, "普通货物:%d单(%.1f%%)", stat->normal_goods_count,
+	        stat->normal_goods_count * 100.0f / total);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 22;
+	sprintf(line, "易碎货物:%d单(%.1f%%)", stat->fragile_count,
+	        stat->fragile_count * 100.0f / total);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 22;
+	sprintf(line, "冷链货物:%d单(%.1f%%)", stat->cold_chain_count,
+	        stat->cold_chain_count * 100.0f / total);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 22;
+	sprintf(line, "危险品:%d单(%.1f%%)", stat->dangerous_count,
+	        stat->dangerous_count * 100.0f / total);
+	outtextxy(UI_PANEL_X + 55, y, line);
+
+	drawStatButton(UI_PANEL_X + 40, UI_PANEL_Y + 315, 70, 30, "导出", 0);
+	drawStatButton(UI_PANEL_X + 165, UI_PANEL_Y + 315, 70, 30, "返回", 0);
+}
+
+static void orderStatsWin() {
+	StatRange range = STAT_RANGE_WEEK;
+	char start_ymd[9], end_ymd[9];
+	OrderStatResult stat;
+	int need_redraw = 1;
+
+	while (1) {
+		if (need_redraw) {
+			make_stat_range(range, start_ymd, end_ymd);
+			stats_svc_calc_order(start_ymd, end_ymd, &stat);
+			draw_order_stats_pdf(&stat, range);
+			need_redraw = 0;
+		}
+
+		ExMessage msg = getmessage(EX_KEY | EX_MOUSE);
+		if (msg.message == WM_KEYDOWN) {
+			if (msg.vkcode == VK_ESCAPE) return;
+			if (msg.vkcode == VK_LEFT && range > STAT_RANGE_TODAY) {
+				range = (StatRange)(range - 1);
+				need_redraw = 1;
+			}
+			if (msg.vkcode == VK_RIGHT && range < STAT_RANGE_MONTH) {
+				range = (StatRange)(range + 1);
+				need_redraw = 1;
+			}
+		} else if (msg.message == WM_LBUTTONDOWN) {
+			if (msg.y >= UI_PANEL_Y + 135 && msg.y <= UI_PANEL_Y + 165) {
+				if (msg.x >= UI_PANEL_X + 25 && msg.x <= UI_PANEL_X + 95) {
+					range = STAT_RANGE_TODAY; need_redraw = 1;
+				} else if (msg.x >= UI_PANEL_X + 110 && msg.x <= UI_PANEL_X + 180) {
+					range = STAT_RANGE_WEEK; need_redraw = 1;
+				} else if (msg.x >= UI_PANEL_X + 195 && msg.x <= UI_PANEL_X + 265) {
+					range = STAT_RANGE_MONTH; need_redraw = 1;
+				}
+			} else if (msg.y >= UI_PANEL_Y + 315 && msg.y <= UI_PANEL_Y + 345) {
+				if (msg.x >= UI_PANEL_X + 40 && msg.x <= UI_PANEL_X + 110) {
+					if (stats_svc_export_order_txt("data/order_stats_report.txt", &stat) == 0)
+						MessageBoxA(GetHWnd(), "报表已导出到 data/order_stats_report.txt", "提示", MB_OK | MB_ICONINFORMATION);
+					else
+						MessageBoxA(GetHWnd(), "报表导出失败，请检查 data 目录", "错误", MB_OK | MB_ICONERROR);
+				} else if (msg.x >= UI_PANEL_X + 165 && msg.x <= UI_PANEL_X + 235) {
+					return;
+				}
+			}
+		}
+	}
+}
+
+static void draw_warehouse_stats_pdf(const WarehouseStatResult *stat, StatRange range) {
+	char line[160];
+	int y = UI_PANEL_Y + 175;
+
+	cleardevice();
+	redraw_bg();
+	window_clear_frame();
+	window_set_card(1);
+	drawQueryFrame("智能物流管理系统仓储统计界面", 370);
+
+	drawStatButton(UI_PANEL_X + 25, UI_PANEL_Y + 135, 70, 30, "今日", range == STAT_RANGE_TODAY);
+	drawStatButton(UI_PANEL_X + 110, UI_PANEL_Y + 135, 70, 30, "本周", range == STAT_RANGE_WEEK);
+	drawStatButton(UI_PANEL_X + 195, UI_PANEL_Y + 135, 70, 30, "本月", range == STAT_RANGE_MONTH);
+
+	settextstyle(FONT_SMALL_H, FONT_SMALL_W, _T("黑体"));
+	settextcolor(TEXT_MAIN);
+	outtextxy(UI_PANEL_X + 25, y, "================仓储统计结果================"); y += 30;
+	sprintf(line, "统计时间：%s 至 %s", stat->start_date, stat->end_date);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 30;
+	sprintf(line, "入库总数量：%d 件", stat->total_inbound);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 30;
+	sprintf(line, "出库总数量：%d 件", stat->total_outbound);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 30;
+	sprintf(line, "当前库存总量：%d 件", stat->current_total_inv);
+	outtextxy(UI_PANEL_X + 55, y, line);
+
+	drawStatButton(UI_PANEL_X + 40, UI_PANEL_Y + 315, 70, 30, "导出", 0);
+	drawStatButton(UI_PANEL_X + 165, UI_PANEL_Y + 315, 70, 30, "返回", 0);
+}
+
+static void warehouseStatsWin() {
+	StatRange range = STAT_RANGE_WEEK;
+	char start_ymd[9], end_ymd[9];
+	WarehouseStatResult stat;
+	int need_redraw = 1;
+
+	while (1) {
+		if (need_redraw) {
+			make_stat_range(range, start_ymd, end_ymd);
+			stats_svc_calc_warehouse(start_ymd, end_ymd, &stat);
+			draw_warehouse_stats_pdf(&stat, range);
+			need_redraw = 0;
+		}
+
+		ExMessage msg = getmessage(EX_KEY | EX_MOUSE);
+		if (msg.message == WM_KEYDOWN) {
+			if (msg.vkcode == VK_ESCAPE) return;
+			if (msg.vkcode == VK_LEFT && range > STAT_RANGE_TODAY) {
+				range = (StatRange)(range - 1);
+				need_redraw = 1;
+			}
+			if (msg.vkcode == VK_RIGHT && range < STAT_RANGE_MONTH) {
+				range = (StatRange)(range + 1);
+				need_redraw = 1;
+			}
+		} else if (msg.message == WM_LBUTTONDOWN) {
+			if (msg.y >= UI_PANEL_Y + 135 && msg.y <= UI_PANEL_Y + 165) {
+				if (msg.x >= UI_PANEL_X + 25 && msg.x <= UI_PANEL_X + 95) {
+					range = STAT_RANGE_TODAY; need_redraw = 1;
+				} else if (msg.x >= UI_PANEL_X + 110 && msg.x <= UI_PANEL_X + 180) {
+					range = STAT_RANGE_WEEK; need_redraw = 1;
+				} else if (msg.x >= UI_PANEL_X + 195 && msg.x <= UI_PANEL_X + 265) {
+					range = STAT_RANGE_MONTH; need_redraw = 1;
+				}
+			} else if (msg.y >= UI_PANEL_Y + 315 && msg.y <= UI_PANEL_Y + 345) {
+				if (msg.x >= UI_PANEL_X + 40 && msg.x <= UI_PANEL_X + 110) {
+					if (stats_svc_export_warehouse_txt("data/warehouse_stats_report.txt", &stat) == 0)
+						MessageBoxA(GetHWnd(), "报表已导出到 data/warehouse_stats_report.txt", "提示", MB_OK | MB_ICONINFORMATION);
+					else
+						MessageBoxA(GetHWnd(), "报表导出失败，请检查 data 目录", "错误", MB_OK | MB_ICONERROR);
+				} else if (msg.x >= UI_PANEL_X + 165 && msg.x <= UI_PANEL_X + 235) {
+					return;
+				}
+			}
+		}
+	}
+}
+
+static void draw_transport_stats_pdf(const TransportStatResult *stat, StatRange range) {
+	char line[160];
+	int y = UI_PANEL_Y + 175;
+
+	cleardevice();
+	redraw_bg();
+	window_clear_frame();
+	window_set_card(1);
+	drawQueryFrame("智能物流管理系统运输统计界面", 370);
+
+	drawStatButton(UI_PANEL_X + 25, UI_PANEL_Y + 135, 70, 30, "今日", range == STAT_RANGE_TODAY);
+	drawStatButton(UI_PANEL_X + 110, UI_PANEL_Y + 135, 70, 30, "本周", range == STAT_RANGE_WEEK);
+	drawStatButton(UI_PANEL_X + 195, UI_PANEL_Y + 135, 70, 30, "本月", range == STAT_RANGE_MONTH);
+
+	settextstyle(FONT_SMALL_H, FONT_SMALL_W, _T("黑体"));
+	settextcolor(TEXT_MAIN);
+	outtextxy(UI_PANEL_X + 25, y, "================运输统计结果================"); y += 30;
+	sprintf(line, "统计时间：%s 至 %s", stat->start_date, stat->end_date);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 30;
+	sprintf(line, "调度总单数：%d 单", stat->total_dispatch);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 30;
+	sprintf(line, "运输完成单数：%d 单", stat->completed_dispatch);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 30;
+	sprintf(line, "运输完成率：%.1f%%", stat->completion_rate);
+	outtextxy(UI_PANEL_X + 55, y, line); y += 30;
+	sprintf(line, "平均运输时效：%.1f 小时", stat->avg_transport_hours);
+	outtextxy(UI_PANEL_X + 55, y, line);
+
+	drawStatButton(UI_PANEL_X + 40, UI_PANEL_Y + 315, 70, 30, "导出", 0);
+	drawStatButton(UI_PANEL_X + 165, UI_PANEL_Y + 315, 70, 30, "返回", 0);
+}
+
+static void transportStatsWin() {
+	StatRange range = STAT_RANGE_WEEK;
+	char start_ymd[9], end_ymd[9];
+	TransportStatResult stat;
+	int need_redraw = 1;
+
+	while (1) {
+		if (need_redraw) {
+			make_stat_range(range, start_ymd, end_ymd);
+			stats_svc_calc_transport(start_ymd, end_ymd, &stat);
+			draw_transport_stats_pdf(&stat, range);
+			need_redraw = 0;
+		}
+
+		ExMessage msg = getmessage(EX_KEY | EX_MOUSE);
+		if (msg.message == WM_KEYDOWN) {
+			if (msg.vkcode == VK_ESCAPE) return;
+			if (msg.vkcode == VK_LEFT && range > STAT_RANGE_TODAY) {
+				range = (StatRange)(range - 1);
+				need_redraw = 1;
+			}
+			if (msg.vkcode == VK_RIGHT && range < STAT_RANGE_MONTH) {
+				range = (StatRange)(range + 1);
+				need_redraw = 1;
+			}
+		} else if (msg.message == WM_LBUTTONDOWN) {
+			if (msg.y >= UI_PANEL_Y + 135 && msg.y <= UI_PANEL_Y + 165) {
+				if (msg.x >= UI_PANEL_X + 25 && msg.x <= UI_PANEL_X + 95) {
+					range = STAT_RANGE_TODAY; need_redraw = 1;
+				} else if (msg.x >= UI_PANEL_X + 110 && msg.x <= UI_PANEL_X + 180) {
+					range = STAT_RANGE_WEEK; need_redraw = 1;
+				} else if (msg.x >= UI_PANEL_X + 195 && msg.x <= UI_PANEL_X + 265) {
+					range = STAT_RANGE_MONTH; need_redraw = 1;
+				}
+			} else if (msg.y >= UI_PANEL_Y + 315 && msg.y <= UI_PANEL_Y + 345) {
+				if (msg.x >= UI_PANEL_X + 40 && msg.x <= UI_PANEL_X + 110) {
+					if (stats_svc_export_transport_txt("data/transport_stats_report.txt", &stat) == 0)
+						MessageBoxA(GetHWnd(), "报表已导出到 data/transport_stats_report.txt", "提示", MB_OK | MB_ICONINFORMATION);
+					else
+						MessageBoxA(GetHWnd(), "报表导出失败，请检查 data 目录", "错误", MB_OK | MB_ICONERROR);
+				} else if (msg.x >= UI_PANEL_X + 165 && msg.x <= UI_PANEL_X + 235) {
+					return;
+				}
+			}
+		}
+	}
+}
+
+static void statsWin() {
+	MenuItem sm[5] = {
+		{"1. 订单统计", 0, (void(*)())orderStatsWin, 0},
+		{"2. 仓储统计", 0, (void(*)())warehouseStatsWin, 0},
+		{"3. 运输统计", 0, (void(*)())transportStatsWin, 0},
+		{"4. 报表生成", 0, (void(*)())orderStatsWin, 0},
+		{"5. 返回上级", 0, NULL, 0},
+	};
+	WINDOW_T win;
+	win.x = 0; win.y = 0; win.width = WIN_W; win.height = WIN_H;
+	win.bgColor = WHITE_COLOR;
+	win.count = 5;
+	for (int i = 0; i < 5; i++) {
+		CONTROL_T c;
+		c.x = (i % 2 == 0) ? MENU_COL_LEFT : MENU_COL_RIGHT;
+		c.y = MENU_ROWS_Y[i / 2];
+		c.width = MENU_W; c.height = MENU_H;
+		strcpy(c.text, sm[i].text);
+		c.bgColor1 = PRIMARY; c.bgColor2 = WHITE_COLOR;
+		c.textColor = WHITE_COLOR; c.textColor2 = TEXT_MAIN;
+		c.type = BUTTON;
+		c.state = (i == 0) ? 1 : 0;
+		c.visible = 0; c.sel_index = 0;
+		win.controls[i] = c;
+	}
+	win.current = 0;
+
+	window_clear_frame();
+	window_set_card(1);
+	while (1) {
+		window_show(win);
+		drawPageHeader("智能物流管理系统统计分析界面");
+		win = window_run(win);
+		if (win.current == 4) return;
+		if (sm[win.current].action) sm[win.current].action();
+	}
 }
 
 /* ------- 角色选择 COMBO 窗口 ------- */
@@ -277,22 +631,15 @@ static void searchUserWinPdf() {
 		else if (msg.message == WM_KEYDOWN) {
 			if (msg.vkcode == VK_ESCAPE) return;
 			if (msg.vkcode == VK_BACK) {
-				int len = (int)strlen(keyword);
-				if (len > 0) { keyword[len - 1] = '\0'; page = 0; need_redraw = 1; }
+				if (input_delete_last_char(keyword)) { page = 0; need_redraw = 1; }
 			}
 			if (msg.vkcode == VK_LEFT && page > 0) { page--; need_redraw = 1; }
 			if (msg.vkcode == VK_RIGHT && page < pages - 1) { page++; need_redraw = 1; }
 		}
 		else if (msg.message == WM_CHAR) {
-			char ch = (char)msg.ch;
-			if (ch >= 32 && ch <= 126) {
-				int len = (int)strlen(keyword);
-				if (len < 31) {
-					keyword[len] = ch;
-					keyword[len + 1] = '\0';
-					page = 0;
-					need_redraw = 1;
-				}
+			if (input_append_char(keyword, 30, msg.ch, INPUT_FILTER_CHINESE)) {
+				page = 0;
+				need_redraw = 1;
 			}
 		}
 	}
@@ -300,56 +647,6 @@ static void searchUserWinPdf() {
 
 static void searchUserWin() {
 	searchUserWinPdf();
-	return;
-	WINDOW_T win = {
-		220, 160, 360, 260, WHITE_COLOR, 5, {
-			{230, 170, 340, 30, "用户查询",
-			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
-			{230, 210, 80, BTN_H, "用户名：",
-			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
-			{320, 210, 240, BTN_H, "",
-			 WHITE_COLOR, INPUT_BG, BLACK_COLOR, EDIT, 1, 0, 0, 0},
-			{230, 300, BTN_W, BTN_H, "查询",
-			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
-			{415, 300, BTN_W, BTN_H, "返回",
-			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
-		}
-	};
-
-	while (1) {
-		window_show(win);
-		win = window_run(win);
-
-		if (win.current == 3) {
-			char *keyword = win.controls[2].text;
-			if (strlen(keyword) == 0) {
-				showUserList(user_svc_list_all());
-			} else {
-				User *filtered = NULL, *tail = NULL;
-				User *p = user_svc_list_all();
-				while (p) {
-					if (strstr(p->name, keyword)) {
-						User *copy = (User *)malloc(sizeof(User));
-						memcpy(copy, p, sizeof(User));
-						copy->next = NULL;
-						if (!filtered) filtered = copy;
-						else tail->next = copy;
-						tail = copy;
-					}
-					p = p->next;
-				}
-				showUserList(filtered);
-				while (filtered) {
-					User *tmp = filtered;
-					filtered = filtered->next;
-					free(tmp);
-				}
-			}
-		}
-		else if (win.current == 4) {
-			return;
-		}
-	}
 }
 
 /* ========== 系统管理子窗口 — 2×4 网格 ========== */
@@ -361,7 +658,7 @@ static void sysAdminWin() {
 		{"4. 角色管理",    0, (void(*)())roleMgmtStubWin,     0},
 		{"5. 仓库配置",    0, (void(*)())warehouseConfigWin, 0},
 		{"6. 运输路线配置",0, (void(*)())routeConfigStubWin,   0},
-		{"7. 数据备份",    0, (void(*)())dataBackupStubWin,    0},
+		{"7. 数据备份",    0, (void(*)())dataBackupWin,        0},
 		{"8. 返回上级",    0, NULL,                           0},
 	};
 
@@ -470,32 +767,6 @@ static void orderMgmtWinPdf() {
 
 static void orderMgmtWin() {
 	orderMgmtWinPdf();
-	return;
-	WINDOW_T win = {
-		220, 120, 360, 360, WHITE_COLOR, 6, {
-			{230, 135, 340, 30, "订单管理",
-			 WHITE_COLOR, WHITE_COLOR, TEXT_MAIN, LABEL, 0, 0, 0, 0},
-			{230, 185, 320, BTN_H, "创建订单",
-			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 1, 0, 0, TEXT_MAIN},
-			{230, 245, 320, BTN_H, "订单查询与审核",
-			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
-			{230, 305, 320, BTN_H, "订单跟踪",
-			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
-			{230, 385, BTN_W, BTN_H, "返回",
-			 PRIMARY, WHITE_COLOR, WHITE_COLOR, BUTTON, 0, 0, 0, TEXT_MAIN},
-		}
-	};
-
-	while (1) {
-		window_show(win);
-		win = window_run(win);
-		switch (win.current) {
-		case 1: createOrderWin(); break;
-		case 2: searchOrderWin(); break;
-		case 3: trackOrderWin(); break;
-		case 4: return;
-		}
-	}
 }
 
 /* ========== 密码修改窗口 ========== */
@@ -616,7 +887,7 @@ int mainWin() {
 		{"2. 订单管理", PERM_ORDER_MANAGE, (void(*)())orderMgmtWin,     0},
 		{"3. 仓储管理", PERM_WAREHOUSE,    (void(*)())warehouseMgmtWin, 0},
 		{"4. 运输管理", PERM_TRANSPORT,    (void(*)())transportMgmtWin, 0},
-		{"5. 统计分析", PERM_STATISTICS,   (void(*)())statsStubWin,     0},
+		{"5. 统计分析", PERM_STATISTICS,   (void(*)())statsWin,         0},
 		{"6. 客户服务", PERM_ORDER_MANAGE, (void(*)())serviceStubWin,   0},
 		{"7. 密码修改", 0,                 (void(*)())changePasswordWin,0},
 		{"8. 退出系统", 0,                 NULL,                        1},

@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "control.h"
+#include "../public/common.h"
 #include "../public/ui_config.h"
 
 /* ---- 全局背景图 ---- */
@@ -236,6 +237,7 @@ WINDOW_T window_run(WINDOW_T win) {
 						i = c;
 						win.controls[i].state = 1;
 						control_show(win.controls[i]);
+						input_reset_pending();
 					}
 				}
 			}
@@ -311,16 +313,14 @@ WINDOW_T window_run(WINDOW_T win) {
 			}
 			else if (msg.vkcode == VK_BACK) {
 				if (win.controls[i].type == EDIT || win.controls[i].type == EDIT_PWD) {
-					int len = (int)strlen(win.controls[i].text);
-					if (len > 0) {
-						win.controls[i].text[len - 1] = '\0';
-						control_show(win.controls[i]);
-					}
+					input_delete_last_char(win.controls[i].text);
+					control_show(win.controls[i]);
 				}
 			}
 			else if (msg.vkcode == VK_UP) {
 				win.controls[i].state = 0;
 				control_show(win.controls[i]);
+				input_reset_pending();
 				do {
 					i--;
 					if (i == -1) i = win.count - 1;
@@ -331,6 +331,7 @@ WINDOW_T window_run(WINDOW_T win) {
 			else if (msg.vkcode == VK_DOWN) {
 				win.controls[i].state = 0;
 				control_show(win.controls[i]);
+				input_reset_pending();
 				do {
 					i++;
 					if (i == win.count) i = 0;
@@ -341,15 +342,10 @@ WINDOW_T window_run(WINDOW_T win) {
 		}
 		/* 字符输入 */
 		else if (msg.message == WM_CHAR) {
-			char ch = (char)msg.ch;
-			if ((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
-				if (win.controls[i].type == EDIT || win.controls[i].type == EDIT_PWD) {
-					int len = (int)strlen(win.controls[i].text);
-					if (len < 99) {
-						win.controls[i].text[len] = ch;
-						win.controls[i].text[len + 1] = '\0';
-						control_show(win.controls[i]);
-					}
+			if (win.controls[i].type == EDIT || win.controls[i].type == EDIT_PWD) {
+				if (input_append_char(win.controls[i].text, 99, msg.ch,
+				    win.controls[i].input_filter)) {
+					control_show(win.controls[i]);
 				}
 			}
 		}

@@ -1,11 +1,10 @@
 #include "common.h"
+#include <ctype.h>
 /* ============================================================
  *           全局链表头指针（定义） 表示各种链表的头指针 
  * ============================================================ */
-Goods             *goods_list_head        = NULL;
 User              *user_list_head         = NULL;
 Order             *order_list_head        = NULL;
-OrderDetail       *order_detail_list_head = NULL;
 Warehouse         *warehouse_list_head    = NULL;
 InOutRecord       *inout_record_list_head = NULL;
 Inventory         *inventory_list_head    = NULL;
@@ -19,9 +18,7 @@ OperationLog      *log_list_head          = NULL;
 
 /* 全局 ID 计数器 */
 //用于管理id 
-int goods_id_counter          = 0;
 int user_id_counter           = 0;
-int order_detail_id_counter   = 0;
 int warehouse_id_counter      = 0;
 int inout_record_id_counter   = 0;
 int inventory_id_counter      = 0;
@@ -65,6 +62,146 @@ void get_current_date_str(char *buf) {
 long time_diff_seconds(time_t from, time_t to) {
     return (long)(to - from);
     
+}
+
+/* ============================================================
+ *           GBK 中文输入支持
+ * ============================================================ */
+
+static int g_pending_lead = 0;  /* 未完成的 GBK 前导字节 */
+
+static int is_gbk_lead(unsigned char c) {
+	return c >= 0x81 && c <= 0xFE;
+}
+
+static int is_gbk_trail(unsigned char c) {
+	return c >= 0x40 && c <= 0xFE && c != 0x7F;
+}
+
+static int is_printable_ascii(unsigned int ch) {
+	return ch >= 32 && ch <= 126;
+}
+
+int input_append_char(char *buf, int max_len, unsigned int ch, int filter) {
+	int len = (int)strlen(buf);
+
+	/* ---- 拒绝控制字符 / DEL ---- */
+	if (ch < 32 || ch == 127) return 0;
+
+	/* ---- GBK 中文模式：支持双字节序列 + 可打印 ASCII ---- */
+	if (filter == INPUT_FILTER_CHINESE) {
+		/* pending lead byte 必须最先处理 ——
+		   trail byte 范围 0x40-0xFE 包含可打印 ASCII(0x40-0x7E) */
+		if (g_pending_lead) {
+			if (is_gbk_trail((unsigned char)ch) && len + 2 <= max_len) {
+				buf[len]     = (char)g_pending_lead;
+				buf[len + 1] = (char)ch;
+				buf[len + 2] = '\0';
+				g_pending_lead = 0;
+				return 2;
+			}
+			g_pending_lead = 0;
+			return 0;
+		}
+
+		if (is_gbk_lead((unsigned char)ch)) {
+			g_pending_lead = (int)ch;
+			return 0;
+		}
+
+		if (is_printable_ascii(ch) && len + 1 <= max_len) {
+			buf[len] = (char)ch;
+			buf[len + 1] = '\0';
+			return 1;
+		}
+		return 0;
+	}
+
+	/* ---- 非中文模式：先清 pending ---- */
+	if (g_pending_lead) g_pending_lead = 0;
+
+	/* ---- 根据过滤器类型判断单字节字符 ---- */
+	switch (filter) {
+	case INPUT_FILTER_PRINTABLE:  /* 可打印 ASCII 32-126 */
+		if (is_printable_ascii(ch) && len + 1 <= max_len) {
+			buf[len] = (char)ch;
+			buf[len + 1] = '\0';
+			return 1;
+		}
+		break;
+
+	case INPUT_FILTER_ALNUM:  /* a-z A-Z 0-9 */
+		if (isalnum((unsigned char)ch) && len + 1 <= max_len) {
+			buf[len] = (char)ch;
+			buf[len + 1] = '\0';
+			return 1;
+		}
+		break;
+
+	case INPUT_FILTER_DIGITS:  /* 0-9 */
+		if (isdigit((unsigned char)ch) && len + 1 <= max_len) {
+			buf[len] = (char)ch;
+			buf[len + 1] = '\0';
+			return 1;
+		}
+		break;
+
+	case INPUT_FILTER_PHONE:  /* 数字 + - 空格 */
+		if (len + 1 <= max_len &&
+		    (isdigit((unsigned char)ch) || ch == '+' || ch == '-' || ch == ' ')) {
+			buf[len] = (char)ch;
+			buf[len + 1] = '\0';
+			return 1;
+		}
+		break;
+	}
+
+	return 0;
+}
+
+int input_delete_last_char(char *buf) {
+	/* 优先清掉未完成的 GBK 前导字节 */
+	if (g_pending_lead) {
+		g_pending_lead = 0;
+		return 0;  /* buf 没有变化，UI 重绘即可 */
+	}
+
+	int len = (int)strlen(buf);
+	if (len == 0) return 0;
+
+	/* 检测最后两字节是否构成一个完整的 GBK 字符 */
+	if (len >= 2 &&
+	    is_gbk_lead((unsigned char)buf[len - 2]) &&
+	    is_gbk_trail((unsigned char)buf[len - 1])) {
+		buf[len - 2] = '\0';
+		return 2;
+	}
+
+	/* 否则删除单字节 */
+	buf[len - 1] = '\0';
+	return 1;
+}
+
+void input_reset_pending() {
+	g_pending_lead = 0;
+}
+
+/* GBK 安全拷贝：不会在双字节字符中间截断 */
+void strncpy_gbk_safe(char *dst, const char *src, size_t dst_size) {
+	if (dst_size == 0) return;
+	size_t src_len = strlen(src);
+	if (src_len < dst_size) {
+		strcpy(dst, src);
+		return;
+	}
+	size_t copy_len = dst_size - 1;
+	/* GBK lead byte 在 0x81-0xFE 范围，不能单独出现。
+	   如果截断点前一个字节是 lead byte，说明 trail byte 被截掉了，
+	   该 lead byte 也必须移除，否则会是非法半字符。 */
+	if (copy_len > 0 && is_gbk_lead((unsigned char)src[copy_len - 1]))
+		copy_len--;
+	memcpy(dst, src, copy_len);
+	dst[copy_len] = '\0';
 }
 
 /* ============================================================

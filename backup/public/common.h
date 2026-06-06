@@ -130,16 +130,6 @@ typedef enum {
  *       用于通用链表操作和二进制文件读写。
  * ============================================================ */
 
-/* ---- 货物 ---- */
-typedef struct Goods {
-    struct Goods *next;
-    int   id;
-    char  name[NAME_LEN];
-    char  type[GOODS_TYPE_LEN];
-    float weight;
-    float volume;
-} Goods;
-
 /* ---- 用户/人员 ---- */
 typedef struct User {
     struct User *next;
@@ -172,15 +162,6 @@ typedef struct Order {
     char        reject_reason[REASON_LEN];  /* 驳回原因 */
 } Order;
 
-/* ---- 订单明细 ---- */
-typedef struct OrderDetail {
-    struct OrderDetail *next;
-    int   id;
-    char  order_id[ORDER_ID_LEN];   /* 外键 - 关联 Order.order_id */
-    int   goods_id;                 /* 外键 - 关联 Goods.id */
-    int   quantity;
-} OrderDetail;
-
 /* ---- 仓库 ---- */
 typedef struct Warehouse {
     struct Warehouse *next;
@@ -209,7 +190,7 @@ typedef struct InOutRecord {
 typedef struct Inventory {
     struct Inventory *next;
     int   id;
-    int   goods_id;                /* 外键 - Goods.id */
+    int   goods_id;                /* 兼容旧库存数据的货物编号 */
     char  goods_name[NAME_LEN];    /* 货物名称 */
     char  goods_type[GOODS_TYPE_LEN];/* 货物类型名称 */
     int   warehouse_id;            /* 外键 - Warehouse.id */
@@ -323,10 +304,8 @@ typedef struct OperationLog {
  *           全局链表头指针（extern 声明）
  *           定义在 common.c 中
  * ============================================================ */
-extern Goods              *goods_list_head;
 extern User               *user_list_head;
 extern Order              *order_list_head;
-extern OrderDetail        *order_detail_list_head;
 extern Warehouse          *warehouse_list_head;
 extern InOutRecord        *inout_record_list_head;
 extern Inventory          *inventory_list_head;
@@ -338,9 +317,7 @@ extern TransportTracking  *tracking_list_head;
 extern OperationLog       *log_list_head;
 
 /* 全局计数器 — 用于自增 ID */
-extern int goods_id_counter;
 extern int user_id_counter;
-extern int order_detail_id_counter;
 extern int warehouse_id_counter;
 extern int inout_record_id_counter;
 extern int inventory_id_counter;
@@ -430,5 +407,26 @@ const char *goods_type_to_string(int type);
 const char *operation_type_to_string(int type);
 int         role_get_permissions(UserRole role);
 
+/* ---- GBK 中文输入支持 ---- */
+
+/* 输入过滤器类型 */
+typedef enum {
+	INPUT_FILTER_PRINTABLE = 0,  /* 可打印 ASCII 32-126 */
+	INPUT_FILTER_CHINESE   = 1,  /* 可打印 ASCII + GBK 中文 */
+	INPUT_FILTER_ALNUM     = 2,  /* 仅字母数字 a-z A-Z 0-9 */
+	INPUT_FILTER_DIGITS    = 3,  /* 仅数字 0-9 */
+	INPUT_FILTER_PHONE     = 4,  /* 数字 + - 空格 */
+} InputFilter;
+
+/* 追加字符到 buf（自动处理 GBK 双字节），返回实际写入字节数（0/1/2）。
+   max_len = 可写入的最大数据字节数（不含 \0）。
+   filter 控制接受哪些字符，见 InputFilter 枚举 */
+int  input_append_char(char *buf, int max_len, unsigned int ch, int filter);
+/* 删除 buf 最后一个字符（自动识别 GBK 双字节），返回删除字节数 */
+int  input_delete_last_char(char *buf);
+/* 清空未完成的 GBK 前导字节，焦点切换时必须调用 */
+void input_reset_pending();
+/* GBK 安全拷贝：不会在 GBK 双字节字符中间截断，末尾前导字节会被移除 */
+void strncpy_gbk_safe(char *dst, const char *src, size_t dst_size);
 
 #endif

@@ -21,6 +21,8 @@ SRCS = main.cpp            \
        service/order_service.cpp     \
        service/warehouse_service.cpp \
        service/transport_service.cpp \
+       service/stats_service.cpp     \
+       service/backup_service.cpp    \
        view/control.cpp      \
        app/loginWin.cpp      \
        app/startWin.cpp      \
